@@ -19,6 +19,7 @@ use commands::{Args, Commands, SocketType};
 use common::{accept_connections, handle_connections};
 use packet::{process_packets, CommandPacket, DataPacket, GreetingPacket, Packet};
 use server::{Connections, PlayerData, ServerState};
+use socket::SocketWrapper;
 
 fn main() {
     let args = Args::parse();
@@ -228,6 +229,7 @@ fn connect(
                                 println!("Received data meant for another player! Weird!");
                             } else {
                                 let port = data.receiver_port;
+                                let socket_type = data.socket_type;
                                 let data = data.data;
                                 println!("Received {} bytes for port {}", data.len(), port);
                                 // Well, now we need to send it!
@@ -237,14 +239,16 @@ fn connect(
                                         format!("127.0.0.1:{}", port).as_str(),
                                     )
                                     .unwrap();
+
                                     let socket_result = TcpStream::connect(address);
                                     match socket_result {
                                         Ok(connected_socket) => {
 											connected_socket.set_nonblocking(true).unwrap();
+											let stream = SocketWrapper::from_tcp_socket(connected_socket);
                                 		    let mut connections = connections.data.lock().unwrap();
 											connections.insert(port, PlayerData {
         									    address,
-        									    stream: connected_socket,
+        									    stream,
         									    name: "localhost".to_string()
         									});
 										},
@@ -252,7 +256,10 @@ fn connect(
                                     }
                                 }
                                 if peers.contains(&port) {
-                                    println!("Port found, attempting delivery");
+                                    println!(
+                                        "Port found, attempting delivery for {:?}",
+                                        socket_type
+                                    );
                                     let mut connections = connections.data.lock().unwrap();
                                     let target_stream = connections.get_mut(&port).unwrap();
 

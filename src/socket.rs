@@ -1,5 +1,5 @@
 use std::{
-    io::Read,
+    io::{Read, Write},
     net::{TcpStream, UdpSocket},
 };
 
@@ -10,12 +10,12 @@ pub struct SocketWrapper {
     udp: Option<UdpSocket>,
 }
 impl SocketWrapper {
-    pub fn connect(tcp_address: String, udp_address: String) -> Self {
-        Self {
-            tcp: Some(TcpStream::connect(tcp_address).unwrap()),
-            udp: Some(UdpSocket::bind(udp_address).unwrap()),
-        }
-    }
+    // pub fn connect(tcp_address: String, udp_address: String) -> Self {
+    // Self {
+    // tcp: Some(TcpStream::connect(tcp_address).unwrap()),
+    // udp: Some(UdpSocket::bind(udp_address).unwrap()),
+    // }
+    // }
 
     pub fn from_tcp_socket(tcp: TcpStream) -> Self {
         Self {
@@ -32,5 +32,10 @@ impl SocketWrapper {
     /// Reads from the tcp stream
     pub fn read(&self, buf: &mut [u8]) -> std::io::Result<usize> {
         self.tcp.as_ref().unwrap().read(buf)
+    }
+
+    /// Writes the tcp stream
+    pub fn write(&self, buf: &[u8]) -> std::io::Result<usize> {
+        self.tcp.as_ref().unwrap().write(buf)
     }
 }
