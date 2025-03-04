@@ -227,6 +227,17 @@ fn connect(
                                 let port = data.receiver_port;
                                 let data = data.data;
                                 println!("Received {} bytes for port {}", data.len(), port);
+                                // Well, now we need to send it!
+                                if peers.contains(&port) {
+                                    println!("Port found, attempting delivery");
+                                    let mut connections = connections.data.lock().unwrap();
+                                    let target_stream = connections.get_mut(&port).unwrap();
+
+                                    target_stream.stream.write(&data[..]).unwrap(); // TODO: verify that this is fine
+                                    println!("Delivery succesful");
+                                } else {
+                                    println!("Failed to find the desired port.");
+                                }
                             }
                         }
                         _ => {
