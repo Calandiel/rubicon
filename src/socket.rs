@@ -1,6 +1,6 @@
 use std::{
     io::{Read, Write},
-    net::{TcpStream, UdpSocket},
+    net::{SocketAddr, TcpStream, UdpSocket},
 };
 
 /// A "merged" socket type that combines tcp and udp in a one easier to use API
@@ -44,5 +44,13 @@ impl SocketWrapper {
     /// Writes the tcp stream
     pub fn write(&self, buf: &[u8]) -> std::io::Result<usize> {
         self.tcp.as_ref().unwrap().write(buf)
+    }
+
+    pub fn has_udp(&self) -> bool {
+        return self.udp.is_some();
+    }
+
+    pub fn read_udp(&self, buf: &mut [u8]) -> std::io::Result<(usize, SocketAddr)> {
+        self.udp.as_ref().unwrap().recv_from(buf)
     }
 }

@@ -10,6 +10,7 @@ use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
     str::FromStr,
+    sync::mpsc::channel,
     time::Duration,
 };
 
@@ -55,14 +56,14 @@ fn host(port: u16) {
     // process existing connections - we need to read the data from them and then pass it to the intended receiver
 
     handle_connections(server_state, |server_state, buffer| {
-        let peers: HashSet<u16> = server_state
-            .connections
-            .data
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|(k, _)| *k)
-            .collect();
+        // let peers: HashSet<u16> = server_state
+        // .connections
+        // .data
+        // .lock()
+        // .unwrap()
+        // .iter()
+        // .map(|(k, _)| *k)
+        // .collect();
         let mut packets = vec![]; // Packets to pass
         let mut disconnected = vec![]; // Disconnected peers
         let mut commands = vec![];
@@ -72,7 +73,7 @@ fn host(port: u16) {
         let mut connections = server_state.connections.clone();
         process_packets(
             &mut connections,
-            &peers,
+            // &peers,
             &mut packets,
             &mut disconnected,
             &mut commands,
@@ -144,13 +145,13 @@ fn process_disconnection(connections: &mut Connections, disconnected: &mut Vec<u
 
 fn connect(
     port: u16,
-    address: String,
+    relay_server_address: String,
     player_name: String,
     other_player_name: String,
     other_player_port: u16,
 ) {
     // The stream that accepts packets from local entities
-    let mut local_outgoing_stream = TcpStream::connect(address).unwrap();
+    let mut local_outgoing_stream = TcpStream::connect(relay_server_address).unwrap();
     // ALWAYS begin by sending our name!
     local_outgoing_stream
         .write(
@@ -161,6 +162,7 @@ fn connect(
         )
         .unwrap();
     local_outgoing_stream.set_nonblocking(true).unwrap(); // set non blocking AFTER we send the packet
+    let (udp_packet_sender, udp_packet_receiver) = channel::<Vec<u8>>();
 
     // Incomming stream
     let client = ClientState::new(player_name, other_player_name, other_player_port);
@@ -184,7 +186,7 @@ fn connect(
         let mut connections = client.connections.clone();
         process_packets(
             &mut connections,
-            &peers,
+            // &peers,
             &mut packets,
             &mut disconnected,
             &mut commands,
@@ -197,7 +199,10 @@ fn connect(
         // These are the packets we received on the listener (should all always be local)
         // We will re-route them to the server.
         for packet in rejected_packets {
-            println!("Relaying the packet of size {} to the server", packet.len());
+            println!(
+                "Relaying a tcp packet of size {} to the server",
+                packet.len()
+            );
             local_outgoing_stream
                 .write(
                     &bincode::serialize(&Packet::Data(DataPacket {
@@ -205,6 +210,21 @@ fn connect(
                         receiver_name: client.other_player_name.clone(),
                         receiver_port: client.other_player_port,
                         data: packet,
+                    }))
+                    .unwrap()[..],
+                )
+                .unwrap(); // TODO: verify that this is OK
+        }
+        // Remember to also receive UDP!
+        while let Ok(data) = udp_packet_receiver.try_recv() {
+            println!("Relaying a udp packet of size {} to the server", data.len());
+            local_outgoing_stream
+                .write(
+                    &bincode::serialize(&Packet::Data(DataPacket {
+                        socket_type: SocketType::Udp,
+                        receiver_name: client.other_player_name.clone(),
+                        receiver_port: client.other_player_port,
+                        data,
                     }))
                     .unwrap()[..],
                 )
@@ -286,7 +306,11 @@ fn connect(
     });
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-    accept_connections(&listener, Some(format!("0.0.0.0:{}", port)), connections);
+    accept_connections(
+        &listener,
+        Some((format!("0.0.0.0:{}", port), udp_packet_sender)),
+        connections,
+    );
 }
 
 /// Connects to an address and starts sending tcp packets to it.

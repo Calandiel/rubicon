@@ -1,5 +1,3 @@
-use std::{collections::HashSet, io::Read};
-
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -42,7 +40,7 @@ pub struct NetworkTopologyPacket {
 /// TODO: replace these args with a single structure
 pub fn process_packets(
     connections: &mut Connections,
-    peers: &HashSet<u16>,
+    // peers: &HashSet<u16>,
     packets: &mut Vec<(u16, DataPacket)>,
     disconnected: &mut Vec<u16>,
     commands: &mut Vec<String>,

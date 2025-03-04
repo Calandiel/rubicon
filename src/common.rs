@@ -11,9 +11,28 @@ pub trait ToConnections {
 
 pub fn accept_connections(
     tcp_listener: &TcpListener,
-    udp_listener_address: Option<String>,
+    mut udp_address_and_server_relay: Option<(String, std::sync::mpsc::Sender<Vec<u8>>)>,
     connections: Connections,
 ) -> ! {
+    let connections_cloned = connections.clone();
+    std::thread::spawn(move || {
+        let connections = connections_cloned;
+        if let Some((addr, server_relay)) = &mut udp_address_and_server_relay {
+            println!("Binding a udp socket on {}", addr);
+            let udp = UdpSocket::bind(addr.clone()).unwrap();
+            udp.set_nonblocking(true).unwrap();
+            let mut buffer = [0u8; 1024 * 1024];
+
+            loop {
+                if let Ok((size, addr)) = udp.recv_from(&mut buffer) {
+                    println!("Received udp traffic of size {} from {}", size, addr);
+                    // Welp, gotta send it next!
+                    server_relay.send(buffer[..size].to_vec()).unwrap();
+                }
+            }
+        }
+    });
+
     loop {
         let stream = tcp_listener.accept();
         if let Ok((tcp_stream, peer)) = stream {
@@ -25,14 +44,7 @@ pub fn accept_connections(
                 PlayerData {
                     name: "<missing>".to_string(),
                     address: peer,
-                    stream: if let Some(addr) = &udp_listener_address {
-                        SocketWrapper::from_tcp_and_udp_sockets(
-                            tcp_stream,
-                            UdpSocket::bind(addr).unwrap(),
-                        )
-                    } else {
-                        SocketWrapper::from_tcp_socket(tcp_stream)
-                    },
+                    stream: SocketWrapper::from_tcp_socket(tcp_stream),
                 },
             );
         }
