@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -52,6 +54,7 @@ pub fn process_packets(
 	is_host: bool, // ignored by servers
 	default_receiver_name: String,
 	default_receiver_port: u16,
+	redirection_table: &HashMap<u16, (String, u16)>,
 ) {
     let mut locked_connections = connections.data.lock().unwrap();
     for (port, player_data) in locked_connections.iter_mut() {
@@ -78,8 +81,13 @@ pub fn process_packets(
                         // Check if the received port exists!
                         match packet {
                             Packet::Data(data) => {
-                                println!("Recognized a data packet");
+                                println!("Recognized a data packet from {}:{} for {}:{}", data.sender_name, data.sender_port, data.receiver_name, data.receiver_port);
                                 packets.push((*port, data));
+
+								// Hosts need to store the data
+								// if is_host && redirection_table.contains_key(&port) {
+									// redirection_table.insert(k, v)
+								// }
                             }
                             Packet::NetworkTopology(_) => todo!(),
                             Packet::Command(command) => {
@@ -96,9 +104,15 @@ pub fn process_packets(
 						if is_host {
 							// If we're a host, we need to resolve the address ourselves
 	                        // rejected_packets_buffers.push((default_receiver_name.clone(), default_receiver_port ,sliced_data.to_vec()));
+							if let Some((receiver_name, receiver_port)) = redirection_table.get(port) {
+								rejected_packets_buffers.push((receiver_name.clone(), *receiver_port, sliced_data.to_vec()));
+								println!("Retrieved receiver name and port. Message scheduled for transmission.");
+							} else {
+								println!("Retrieval of receivers name failed on port: {}", *port)
+							}
 						} else {
 							// If we're not a host, just target the default receiver
-	                        rejected_packets_buffers.push((default_receiver_name.clone(), default_receiver_port ,sliced_data.to_vec()));
+	                        rejected_packets_buffers.push((default_receiver_name.clone(), default_receiver_port, sliced_data.to_vec()));
 						}
                     }
                 }

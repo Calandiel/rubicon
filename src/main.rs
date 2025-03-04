@@ -55,7 +55,8 @@ fn host(port: u16) {
 
     // process existing connections - we need to read the data from them and then pass it to the intended receiver
 
-    handle_connections(server_state, |server_state, buffer| {
+    let _cached = Default::default();
+    handle_connections(server_state, move |server_state, buffer| {
         // let peers: HashSet<u16> = server_state
         // .connections
         // .data
@@ -83,6 +84,7 @@ fn host(port: u16) {
             false,
             Default::default(),
             Default::default(),
+            &_cached,
         );
         relay_packets(server_state, &mut packets);
         process_disconnection(&mut connections, &mut disconnected);
@@ -200,6 +202,7 @@ fn connect(
             client.is_host(),
             client.other_player_name.clone(),
             client.other_player_port,
+            &client.player_redirection_table,
         );
         process_disconnection(&mut connections, &mut disconnected);
 
@@ -207,7 +210,7 @@ fn connect(
         // We will re-route them to the server.
         for (receiver_name, receiver_port, packet) in rejected_packets {
             println!(
-                "Relaying a tcp packet of size {} to the server",
+                "Relaying a tcp packet of size {} for {receiver_name}:{receiver_port} to the server",
                 packet.len()
             );
             local_outgoing_stream
@@ -250,6 +253,8 @@ fn connect(
         }
         match local_outgoing_stream.read(buffer) {
             Ok(received_data) => {
+                let socket_port = local_outgoing_stream.peer_addr().unwrap().port();
+
                 // This is data received from the server.
                 let received_data = &buffer[..received_data];
                 if let Ok(value) = bincode::deserialize::<Packet>(&received_data) {
@@ -259,31 +264,46 @@ fn connect(
                             if client.player_name != data.receiver_name {
                                 println!("Received data meant for another player! Weird!");
                             } else {
-                                let port = data.receiver_port;
-                                let address =
-                                    SocketAddr::from_str(format!("127.0.0.1:{}", port).as_str())
-                                        .unwrap();
+                                let receiver_port = data.receiver_port;
+                                let address = SocketAddr::from_str(
+                                    format!("127.0.0.1:{}", receiver_port).as_str(),
+                                )
+                                .unwrap();
                                 println!(
-                                    "Received {} bytes for port {}, from {} for {}",
+                                    "Received {} bytes for port {}, from {} for {} on socket {}",
                                     data.data.len(),
-                                    port,
+                                    receiver_port,
                                     data.sender_name,
-                                    data.receiver_name
+                                    data.receiver_name,
+                                    local_outgoing_stream.peer_addr().unwrap()
                                 );
 
+                                // Hosts need to keep their redirection tables in sync!
                                 if client.is_host() {
-                                    //
+                                    if !client
+                                        .player_redirection_table
+                                        .contains_key(&data.receiver_port)
+                                    {
+                                        println!(
+                                            "Adding a new redirection table entry: {} -> {}:{}",
+                                            data.receiver_port, data.sender_name, data.sender_port
+                                        );
+                                        client.player_redirection_table.insert(
+                                            data.receiver_port,
+                                            (data.sender_name, data.sender_port),
+                                        );
+                                    }
                                 }
 
                                 let data = data.data;
                                 // Well, now we need to send it!
                                 if socket_type == SocketType::Tcp
-                                    && (!peers.contains(&port)
+                                    && (!peers.contains(&receiver_port)
                                         || !connections
                                             .data
                                             .lock()
                                             .unwrap()
-                                            .get(&port)
+                                            .get(&receiver_port)
                                             .unwrap()
                                             .stream
                                             .has_tcp())
@@ -301,11 +321,11 @@ fn connect(
                                 	    	    Ok(connected_socket) => {
 													connected_socket.set_nonblocking(true).unwrap();
                                 				    let mut connections = connections.data.lock().unwrap();
-													if let Some(existing) = connections.get_mut(&port) {
+													if let Some(existing) = connections.get_mut(&receiver_port) {
 														existing.stream.fill_in_tcp(connected_socket);
 													} else {
 													let stream = SocketWrapper::from_tcp_socket(connected_socket);
-													connections.insert(port, PlayerData {
+													connections.insert(receiver_port, PlayerData {
         											    address,
         											    stream,
         											    name: "localhost".to_string()
@@ -324,13 +344,15 @@ fn connect(
                                     relay_packet_sender
                                         .send((address.to_string(), data.clone()))
                                         .unwrap();
-                                    if let Some(target_stream) = connections.get_mut(&port) {
+                                    if let Some(target_stream) = connections.get_mut(&receiver_port)
+                                    {
                                         target_stream.stream.touch();
                                     }
                                 }
-                                if peers.contains(&port) {
+                                if peers.contains(&receiver_port) {
                                     let mut connections = connections.data.lock().unwrap();
-                                    let target_stream = connections.get_mut(&port).unwrap();
+                                    let target_stream =
+                                        connections.get_mut(&receiver_port).unwrap();
                                     match socket_type {
                                         SocketType::Udp => {
                                             // nothing to do, handled above
@@ -443,7 +465,7 @@ fn listen(port: u16, udp: SocketType) {
                         counter += 1;
                         if counter % 7 == 3 {
                             println!("Pinging back on the same tcp connection...");
-                            let sent = stream.write(&data); // TODO: handle this gracefully
+                            let _sent = stream.write(&data); // TODO: handle this gracefully
                         }
                     }
                 }
