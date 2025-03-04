@@ -2,6 +2,10 @@ use std::net::TcpListener;
 
 use crate::server::{Connections, PlayerData};
 
+pub trait ToConnections {
+    fn to_connections(&mut self) -> &mut Connections;
+}
+
 pub fn accept_connections(listener: &TcpListener, connections: Connections) -> ! {
     loop {
         let stream = listener.accept();
@@ -21,8 +25,17 @@ pub fn accept_connections(listener: &TcpListener, connections: Connections) -> !
     }
 }
 
-pub fn handle_connections<F: FnMut(&mut Connections, &mut [u8]) -> () + Send + 'static>(
-    mut connections: Connections,
+pub fn print_connections(connections: &Connections) {
+    for (_, player_data) in connections.data.lock().unwrap().iter() {
+        println!("- {} @ {}", player_data.name, player_data.address);
+    }
+}
+
+pub fn handle_connections<
+    T: ToConnections + Send + 'static,
+    F: FnMut(&mut T, &mut [u8]) -> () + Send + 'static,
+>(
+    mut connections: T,
     mut closure: F,
 ) {
     std::thread::spawn(move || {

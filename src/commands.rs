@@ -26,6 +26,8 @@ pub enum Commands {
         /// Adress of the host
         address: String,
         player_name: String,
+        other_player_name: String,
+        other_player_port: u16,
     },
 
     /// Pings a tcp socket at a given address from a given port.
@@ -35,4 +37,8 @@ pub enum Commands {
     /// Listens on a port
     #[command(arg_required_else_help = true)]
     Listen { port: u16 },
+
+    /// Sends a command to the server
+    #[command(arg_required_else_help = true)]
+    Command { address: String, command: String },
 }
