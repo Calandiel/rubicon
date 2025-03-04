@@ -213,6 +213,7 @@ fn connect(
                 "Relaying a tcp packet of size {} for {receiver_name}:{receiver_port} to the server",
                 packet.len()
             );
+
             local_outgoing_stream
                 .write(
                     &bincode::serialize(&Packet::Data(DataPacket {
