@@ -87,12 +87,12 @@ fn host(port: u16) {
         let connections = cons;
         let mut buffer = [0u8; 1024 * 1024];
         loop {
-            let mut connections = connections.data.lock().unwrap();
-            let peers: HashSet<u16> = connections.iter().map(|(k, _)| *k).collect();
+            let mut locked_connections = connections.data.lock().unwrap();
+            let peers: HashSet<u16> = locked_connections.iter().map(|(k, _)| *k).collect();
             let mut packets = vec![]; // Packets to pass
             let mut disconnected = vec![]; // Disconnected peers
 
-            for (port, (peer, stream)) in connections.iter_mut() {
+            for (port, (peer, stream)) in locked_connections.iter_mut() {
                 // Check for disconnects
                 if let Ok(size) = stream.peek(&mut buffer) {
                     if size == 0 {
@@ -128,25 +128,32 @@ fn host(port: u16) {
                 }
             }
 
+            let mut locked_connections = connections.data.lock().unwrap();
+            for disconnect in disconnected {
+                locked_connections.remove(disconnect);
+            }
+
+            let mut locked_connections = connections.data.lock().unwrap();
             for packet in packets {
-                if let Some((peer, stream)) = connections.get_mut(&packet.receiver_port) {
+                if let Some((peer, stream)) = locked_connections.get_mut(&packet.receiver_port) {
                     if let Err(e) = stream.write(&packet.data[..]) {
                         match e.kind() {
                             std::io::ErrorKind::WouldBlock => {
-                                println!("A stream ({:?}) would block upon writing: {:?}", peer, e)
+                                println!(
+                                    "A stream ({:?}) would block upon writing: {:?}",
+                                    peer.clone(),
+                                    e
+                                )
                             }
                             _ => println!(
                                 "A stream ({:?}) returned an error upon writing: {:?}",
-                                peer, e
+                                peer.clone(),
+                                e
                             ),
                         }
                     }
                 }
             }
-
-            // for disconnect in disconnected {
-            // connections.remove(disconnect);
-            // }
         }
     });
 
