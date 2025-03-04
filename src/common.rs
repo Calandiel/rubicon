@@ -12,7 +12,7 @@ pub trait ToConnections {
 pub fn accept_connections(
     tcp_listener: &TcpListener,
     mut udp_address_and_server_relay: Option<(String, std::sync::mpsc::Sender<Vec<u8>>)>,
-    mut relay_packets_receiver: Option<std::sync::mpsc::Sender<Vec<u8>>>,
+    relay_packets_receiver: Option<std::sync::mpsc::Receiver<(String, Vec<u8>)>>,
     connections: Connections,
 ) -> ! {
     // let connections_cloned = connections.clone();
@@ -31,7 +31,13 @@ pub fn accept_connections(
                 if let Ok((size, addr)) = udp.recv_from(&mut buffer) {
                     println!("Received udp traffic of size {} from {}", size, addr);
                     // Welp, gotta send it next!
+                    // But... where to?
+                    // This could be a server setup ;-;
                     server_relay.send(buffer[..size].to_vec()).unwrap();
+                }
+
+                if let Ok(received) = relay_packets_receiver.as_ref().unwrap().try_recv() {
+                    udp.send_to(&received.1, received.0).unwrap();
                 }
             }
         }
@@ -43,6 +49,8 @@ pub fn accept_connections(
             println!("Received connection from: {}", peer);
             tcp_stream.set_nonblocking(true).unwrap(); // TODO: remove this unwrap
             let mut connections = connections.data.lock().unwrap();
+            // Here is where we add new connections!
+            // We detect them by receiving tcp packets.
             connections.insert(
                 peer.port(),
                 PlayerData {

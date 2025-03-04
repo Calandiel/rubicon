@@ -12,15 +12,15 @@ pub struct ClientState {
 }
 impl ClientState {
     pub fn new(
-        player_udp_port: u16,
         player_name: String,
+        player_port: u16,
         other_player_name: String,
         other_player_port: u16,
     ) -> Self {
         Self {
             connections: Connections::new(),
             player_name,
-            player_port: player_udp_port,
+            player_port,
             other_player_name,
             other_player_port,
         }
@@ -28,6 +28,11 @@ impl ClientState {
 
     pub fn print_connections(&self) {
         print_connections(&self.connections);
+    }
+
+    /// Check if the client is a game host (if so, player name == other player name)
+    pub fn is_host(&self) -> bool {
+        self.player_name == self.other_player_name
     }
 }
 impl ToConnections for ClientState {

@@ -21,6 +21,8 @@ pub struct CommandPacket {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DataPacket {
     pub socket_type: SocketType,
+    pub sender_name: String,
+    pub sender_port: u16,
     pub receiver_name: String,
     pub receiver_port: u16,
     pub data: Vec<u8>,
@@ -61,8 +63,8 @@ pub fn process_packets(
             match player_data.stream.read(buffer) {
                 Ok(value) => {
                     println!(
-                        "Received data of size {} from {} while processing packets",
-                        value, player_data.address
+                        "Received data of size {} from {} ({}) while processing packets",
+                        value, player_data.address, player_data.name
                     );
                     if value == 0 {
                         continue; // skip size 0 packets, lol
@@ -84,8 +86,9 @@ pub fn process_packets(
                         }
                     } else {
                         println!(
-                            "Failed to decode the packet. Data size: {}",
-                            sliced_data.len()
+                            "Failed to decode the packet. Data size: {}. Port: {}. Potentially a packed received locally, intended for transmission.",
+                            sliced_data.len(), player_data.address.port() 
+
                         );
                         rejected_packets_buffers.push(sliced_data.to_vec());
                     }

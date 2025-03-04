@@ -28,16 +28,14 @@ fn main() {
     match args.command {
         Commands::Host { port } => host(port),
         Commands::Connect {
-            port,
-            udp_port,
-            address,
+            player_port: port,
+            server_address,
             player_name,
             other_player_name,
             other_player_port,
         } => connect(
             port,
-            udp_port,
-            address,
+            server_address,
             player_name,
             other_player_name,
             other_player_port,
@@ -93,7 +91,7 @@ fn host(port: u16) {
     });
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-    accept_connections(&listener, None, connections);
+    accept_connections(&listener, None, None, connections);
 }
 
 fn relay_packets(server: &mut ServerState, packets: &mut Vec<(u16, DataPacket)>) {
@@ -147,7 +145,6 @@ fn process_disconnection(connections: &mut Connections, disconnected: &mut Vec<u
 
 fn connect(
     port: u16,
-    udp_port: u16,
     relay_server_address: String,
     player_name: String,
     other_player_name: String,
@@ -166,10 +163,10 @@ fn connect(
         .unwrap();
     local_outgoing_stream.set_nonblocking(true).unwrap(); // set non blocking AFTER we send the packet
     let (udp_packet_sender, udp_packet_receiver) = channel::<Vec<u8>>();
-    let (relay_packet_sender, relay_packet_receiver) = channel::<Vec<u8>>();
+    let (relay_packet_sender, relay_packet_receiver) = channel::<(String, Vec<u8>)>();
 
     // Incomming stream
-    let client = ClientState::new(udp_port, player_name, other_player_name, other_player_port);
+    let client = ClientState::new(player_name, port, other_player_name, other_player_port);
     let connections = client.connections.clone();
 
     handle_connections(client, move |client, buffer| {
@@ -211,6 +208,8 @@ fn connect(
                 .write(
                     &bincode::serialize(&Packet::Data(DataPacket {
                         socket_type: SocketType::Tcp,
+                        sender_name: client.player_name.clone(),
+                        sender_port: client.player_port,
                         receiver_name: client.other_player_name.clone(),
                         receiver_port: client.other_player_port,
                         data: packet,
@@ -226,6 +225,8 @@ fn connect(
                 .write(
                     &bincode::serialize(&Packet::Data(DataPacket {
                         socket_type: SocketType::Udp,
+                        sender_name: client.player_name.clone(),
+                        sender_port: client.player_port,
                         receiver_name: client.other_player_name.clone(),
                         receiver_port: client.other_player_port,
                         data,
@@ -245,10 +246,10 @@ fn connect(
             Ok(received_data) => {
                 // This is data received from the server.
                 let received_data = &buffer[..received_data];
-                println!("here be dragons");
                 if let Ok(value) = bincode::deserialize::<Packet>(&received_data) {
                     match value {
                         Packet::Data(data) => {
+                            let socket_type = data.socket_type;
                             if client.player_name != data.receiver_name {
                                 println!("Received data meant for another player! Weird!");
                             } else {
@@ -256,13 +257,23 @@ fn connect(
                                 let address =
                                     SocketAddr::from_str(format!("127.0.0.1:{}", port).as_str())
                                         .unwrap();
-                                let socket_type = data.socket_type;
+                                println!(
+                                    "Received {} bytes for port {}, from {} for {}",
+                                    data.data.len(),
+                                    port,
+                                    data.sender_name,
+                                    data.receiver_name
+                                );
+
+                                if client.is_host() {
+                                    //
+                                }
+
                                 let data = data.data;
-                                println!("Received {} bytes for port {}", data.len(), port);
                                 // Well, now we need to send it!
-                                if !peers.contains(&port)
-                                    || (socket_type == SocketType::Tcp
-                                        && !connections
+                                if socket_type == SocketType::Tcp
+                                    && (!peers.contains(&port)
+                                        || !connections
                                             .data
                                             .lock()
                                             .unwrap()
@@ -270,42 +281,13 @@ fn connect(
                                             .unwrap()
                                             .stream
                                             .has_tcp())
-                                    || (socket_type == SocketType::Udp
-                                        && !connections
-                                            .data
-                                            .lock()
-                                            .unwrap()
-                                            .get(&port)
-                                            .unwrap()
-                                            .stream
-                                            .has_udp())
                                 {
                                     println!("Failed to find the desired port. Attempting to create a new socket for this connection...");
 
                                     // Check if the packet is udp. If it is, a peer isn't needed in the first place!
-                                    let udp_addr = format!("127.0.0.1:{}", client.player_port);
                                     match socket_type {
                                         SocketType::Udp => {
-                                            println!(
-                                                "Binding a udp socket on {} while connecting",
-                                                udp_addr
-                                            );
-                                            let udp = UdpSocket::bind(udp_addr).unwrap();
-                                            udp.set_nonblocking(true).unwrap();
-                                            let mut connections = connections.data.lock().unwrap();
-                                            if let Some(existing) = connections.get_mut(&port) {
-                                                existing.stream.fill_in_udp(udp);
-                                            } else {
-                                                let stream = SocketWrapper::from_udp_socket(udp);
-                                                connections.insert(
-                                                    port,
-                                                    PlayerData {
-                                                        address,
-                                                        stream,
-                                                        name: "localhost".to_string(),
-                                                    },
-                                                );
-                                            }
+                                            // This should never happen!
                                         }
                                         SocketType::Tcp => {
                                             let socket_result = TcpStream::connect(address);
@@ -329,24 +311,29 @@ fn connect(
                                         }
                                     }
                                 }
+
+                                if socket_type == SocketType::Udp {
+                                    println!("Attempting delivery for {:?}", socket_type);
+                                    let mut connections = connections.data.lock().unwrap();
+                                    relay_packet_sender
+                                        .send((address.to_string(), data.clone()))
+                                        .unwrap();
+                                    if let Some(target_stream) = connections.get_mut(&port) {
+                                        target_stream.stream.touch();
+                                    }
+                                }
                                 if peers.contains(&port) {
-                                    println!(
-                                        "Port found, attempting delivery for {:?}",
-                                        socket_type
-                                    );
                                     let mut connections = connections.data.lock().unwrap();
                                     let target_stream = connections.get_mut(&port).unwrap();
-
                                     match socket_type {
                                         SocketType::Udp => {
-                                            assert!(target_stream.stream.has_udp(), "There must be a udp socket in place to deliver udp traffic!");
-                                            target_stream
-                                                .stream
-                                                .write_udp(&data[..], address.to_string())
-                                                .unwrap();
-                                            target_stream.stream.touch();
+                                            // nothing to do, handled above
                                         }
                                         SocketType::Tcp => {
+                                            println!(
+                                                "TCP Port found, attempting delivery for {:?}",
+                                                socket_type
+                                            );
                                             assert!(target_stream.stream.has_tcp(), "There must be a tcp socket in place to deliver tcp traffic!");
                                             target_stream.stream.write(&data[..]).unwrap();
                                             // TODO: verify that this is fine
@@ -377,6 +364,7 @@ fn connect(
     accept_connections(
         &listener,
         Some((format!("0.0.0.0:{}", port), udp_packet_sender)),
+        Some(relay_packet_receiver),
         connections,
     );
 }
@@ -415,7 +403,7 @@ fn ping(address: String, udp: SocketType) {
     }
 }
 
-/// Opens a tcp sockets and starts listening on it
+/// Opens a tcp sockets and starts listening on it, while pinging back every now and then
 fn listen(port: u16, udp: SocketType) {
     println!("Listening on {} as {:?}", port, udp);
 
@@ -434,19 +422,29 @@ fn listen(port: u16, udp: SocketType) {
         SocketType::Tcp => {
             let connections = Connections::new();
 
-            handle_connections(connections.clone(), |connections, buffer| {
+            let mut counter = 0;
+            handle_connections(connections.clone(), move |connections, buffer| {
                 let mut connections = connections.data.lock().unwrap();
                 for (port, player_data) in connections.iter_mut() {
                     let stream = &mut player_data.stream;
                     if let Ok(read) = stream.read(buffer) {
                         let data = buffer[..read].to_vec();
-                        println!("Received data of size {} from port {}", data.len(), port);
+                        println!(
+                            "Received tcp data of size {} from port {}",
+                            data.len(),
+                            port
+                        );
+                        counter += 1;
+                        if counter % 7 == 3 {
+                            println!("Pinging back on the same tcp connection...");
+                            let sent = stream.write(&data); // TODO: handle this gracefully
+                        }
                     }
                 }
             });
 
             let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-            accept_connections(&listener, None, connections);
+            accept_connections(&listener, None, None, connections);
         }
     }
 }

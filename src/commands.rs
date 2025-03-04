@@ -30,17 +30,23 @@ pub enum Commands {
     },
 
     /// Connects to a given host and routes data it receives from other programs into it.
+    /// Example use:
+    /// `rubicon connect 636.35.0.24:7777 Player 7000 Host 8000`
+    /// This will use a server hosted at 636.35.0.24:7777,
+    /// registering ourselves as `Player` with a port 7000, and sending data to `Host:8000.
+    /// Do note than the local game would then attempt to connect to localhost:7000
     #[command(arg_required_else_help = true)]
     Connect {
-        /// Local port to be used as a connection point for the incoming packets.
-        /// Note, each client connecting to the host must use a unique port!
-        port: u16,
-        /// Address of the udp socket opened on this port to relay packets.
-        udp_port: u16,
         /// Adress of the host
-        address: String,
+        server_address: String,
+        /// Name of the player, used as an identifier
         player_name: String,
+        /// Local port to be used as a connection point for the incoming packets.
+        /// rubicon may bind tcp/udp sockets on this port so make sure it's free.
+        player_port: u16,
+        /// Name of the other player to connect to.
         other_player_name: String,
+        /// The port on their machine to route the traffic to.
         other_player_port: u16,
     },
 
