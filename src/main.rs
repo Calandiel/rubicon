@@ -7,7 +7,8 @@ pub mod server;
 use std::{
     collections::HashSet,
     io::{Read, Write},
-    net::{TcpListener, TcpStream},
+    net::{SocketAddr, TcpListener, TcpStream},
+    str::FromStr,
     time::Duration,
 };
 
@@ -16,7 +17,7 @@ use client::ClientState;
 use commands::{Args, Commands};
 use common::{accept_connections, handle_connections};
 use packet::{process_packets, CommandPacket, DataPacket, GreetingPacket, Packet};
-use server::{Connections, ServerState};
+use server::{Connections, PlayerData, ServerState};
 
 fn main() {
     let args = Args::parse();
@@ -228,6 +229,26 @@ fn connect(
                                 let data = data.data;
                                 println!("Received {} bytes for port {}", data.len(), port);
                                 // Well, now we need to send it!
+                                if !peers.contains(&port) {
+                                    println!("Failed to find the desired port. Attempting to create a new socket for this connection...");
+                                    let address = SocketAddr::from_str(
+                                        format!("127.0.0.1:{}", port).as_str(),
+                                    )
+                                    .unwrap();
+                                    let socket_result = TcpStream::connect(address);
+                                    match socket_result {
+                                        Ok(connected_socket) => {
+											connected_socket.set_nonblocking(true).unwrap();
+                                		    let mut connections = connections.data.lock().unwrap();
+											connections.insert(port, PlayerData {
+        									    address,
+        									    stream: connected_socket,
+        									    name: "localhost".to_string()
+        									});
+										},
+                                        Err(e) => println!("Failed to create the socket, dropping the packet. Error message: {}", e),
+                                    }
+                                }
                                 if peers.contains(&port) {
                                     println!("Port found, attempting delivery");
                                     let mut connections = connections.data.lock().unwrap();
@@ -235,8 +256,6 @@ fn connect(
 
                                     target_stream.stream.write(&data[..]).unwrap(); // TODO: verify that this is fine
                                     println!("Delivery succesful");
-                                } else {
-                                    println!("Failed to find the desired port.");
                                 }
                             }
                         }
@@ -284,7 +303,14 @@ fn listen(port: u16) {
     let connections = Connections::new();
 
     handle_connections(connections.clone(), |connections, buffer| {
-        //
+        let mut connections = connections.data.lock().unwrap();
+        for (port, player_data) in connections.iter_mut() {
+            let stream = &mut player_data.stream;
+            if let Ok(read) = stream.read(buffer) {
+                let data = buffer[..read].to_vec();
+                println!("Received data of size {} from port {}", data.len(), port);
+            }
+        }
     });
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
