@@ -2,7 +2,10 @@ use std::{collections::HashSet, io::Read};
 
 use serde::{Deserialize, Serialize};
 
-use crate::server::{Connections, PublicPlayerData};
+use crate::{
+    commands::SocketType,
+    server::{Connections, PublicPlayerData},
+};
 
 #[derive(Serialize, Deserialize)]
 pub enum Packet {
@@ -19,6 +22,7 @@ pub struct CommandPacket {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DataPacket {
+    pub socket_type: SocketType,
     pub receiver_name: String,
     pub receiver_port: u16,
     pub data: Vec<u8>,

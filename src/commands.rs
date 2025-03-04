@@ -1,4 +1,5 @@
-use clap::{command, Parser, Subcommand};
+use clap::{command, Parser, Subcommand, ValueEnum};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Parser)]
 #[command(name = "rubicon")]
@@ -6,6 +7,17 @@ use clap::{command, Parser, Subcommand};
 pub struct Args {
     #[command(subcommand)]
     pub command: Commands,
+}
+
+#[derive(Serialize, Deserialize, ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SocketType {
+    Udp,
+    Tcp,
+}
+impl Default for SocketType {
+    fn default() -> Self {
+        Self::Tcp
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -32,11 +44,11 @@ pub enum Commands {
 
     /// Pings a tcp socket at a given address from a given port.
     #[command(arg_required_else_help = true)]
-    Ping { address: String },
+    Ping { address: String, socket: SocketType },
 
     /// Listens on a port
     #[command(arg_required_else_help = true)]
-    Listen { port: u16 },
+    Listen { port: u16, socket: SocketType },
 
     /// Sends a command to the server
     #[command(arg_required_else_help = true)]

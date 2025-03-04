@@ -1,6 +1,9 @@
 use std::net::TcpListener;
 
-use crate::server::{Connections, PlayerData};
+use crate::{
+    server::{Connections, PlayerData},
+    socket::SocketWrapper,
+};
 
 pub trait ToConnections {
     fn to_connections(&mut self) -> &mut Connections;
@@ -18,7 +21,7 @@ pub fn accept_connections(listener: &TcpListener, connections: Connections) -> !
                 PlayerData {
                     name: "<missing>".to_string(),
                     address: peer,
-                    stream: tcp_stream,
+                    stream: SocketWrapper::from_tcp_socket(tcp_stream),
                 },
             );
         }

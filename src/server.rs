@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    net::{SocketAddr, TcpStream},
+    net::SocketAddr,
     sync::{Arc, Mutex},
 };
 
@@ -8,13 +8,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     common::{print_connections, ToConnections},
-    packet::{DataPacket, GreetingPacket},
+    packet::GreetingPacket,
+    socket::SocketWrapper,
 };
 
 #[derive(Debug)]
 pub struct PlayerData {
     pub address: SocketAddr,
-    pub stream: TcpStream,
+    pub stream: SocketWrapper,
     pub name: String,
 }
 

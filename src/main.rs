@@ -3,18 +3,19 @@ pub mod commands;
 pub mod common;
 pub mod packet;
 pub mod server;
+pub mod socket;
 
 use std::{
     collections::HashSet,
     io::{Read, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
+    net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
     str::FromStr,
     time::Duration,
 };
 
 use clap::Parser;
 use client::ClientState;
-use commands::{Args, Commands};
+use commands::{Args, Commands, SocketType};
 use common::{accept_connections, handle_connections};
 use packet::{process_packets, CommandPacket, DataPacket, GreetingPacket, Packet};
 use server::{Connections, PlayerData, ServerState};
@@ -37,8 +38,8 @@ fn main() {
             other_player_name,
             other_player_port,
         ),
-        Commands::Ping { address } => ping(address),
-        Commands::Listen { port } => listen(port),
+        Commands::Ping { address, socket } => ping(address, socket),
+        Commands::Listen { port, socket } => listen(port, socket),
         Commands::Command { address, command } => send_command(address, command),
     }
 }
@@ -147,10 +148,10 @@ fn connect(
     other_player_name: String,
     other_player_port: u16,
 ) {
-    // Outgoing stream
-    let mut stream = TcpStream::connect(address).unwrap();
+    // The stream that accepts packets from local entities
+    let mut local_outgoing_stream = TcpStream::connect(address).unwrap();
     // ALWAYS begin by sending our name!
-    stream
+    local_outgoing_stream
         .write(
             &bincode::serialize(&Packet::Greeting(GreetingPacket {
                 player_name: player_name.clone(),
@@ -158,7 +159,7 @@ fn connect(
             .unwrap()[..],
         )
         .unwrap();
-    stream.set_nonblocking(true).unwrap(); // set non blocking AFTER we send the packet
+    local_outgoing_stream.set_nonblocking(true).unwrap(); // set non blocking AFTER we send the packet
 
     // Incomming stream
     let client = ClientState::new(player_name, other_player_name, other_player_port);
@@ -196,9 +197,10 @@ fn connect(
         // We will re-route them to the server.
         for packet in rejected_packets {
             println!("Relaying the packet of size {} to the server", packet.len());
-            stream
+            local_outgoing_stream
                 .write(
                     &bincode::serialize(&Packet::Data(DataPacket {
+                        socket_type: SocketType::Tcp,
                         receiver_name: client.other_player_name.clone(),
                         receiver_port: client.other_player_port,
                         data: packet,
@@ -209,12 +211,12 @@ fn connect(
         }
 
         // After reading packets, we also need to receive packets from the server...
-        if let Ok(data) = stream.peek(buffer) {
+        if let Ok(data) = local_outgoing_stream.peek(buffer) {
             if data == 0 {
                 panic!("SERVER TIMEOUT!");
             }
         }
-        match stream.read(buffer) {
+        match local_outgoing_stream.read(buffer) {
             Ok(received_data) => {
                 // This is data received from the server.
                 let received_data = &buffer[..received_data];
@@ -281,40 +283,71 @@ fn connect(
 }
 
 /// Connects to an address and starts sending tcp packets to it.
-fn ping(address: String) {
-    println!("Pinging {}", address);
+fn ping(address: String, udp: SocketType) {
+    println!("Pinging {} as {:?}", address, udp);
     // Outgoing stream
-    let mut stream = TcpStream::connect(address).unwrap();
-    stream.set_nonblocking(true).unwrap();
 
-    let mut o = 0;
-    loop {
-        std::thread::sleep(Duration::from_millis(500));
-        let _ = stream.write(&[1, 2, 3, 5, 7, 11, 13]);
-        o += 1;
-        println!("{}", o);
+    match udp {
+        SocketType::Udp => {
+            //
+            let udp = UdpSocket::bind("0.0.0.0:45333").unwrap();
+
+            let mut o = 0;
+            loop {
+                std::thread::sleep(Duration::from_millis(500));
+                let _ = udp.send_to(&[1, 2, 3, 5, 7, 11, 13], address.clone());
+                o += 1;
+                println!("{}", o);
+            }
+        }
+        SocketType::Tcp => {
+            let mut stream = TcpStream::connect(address).unwrap();
+            stream.set_nonblocking(true).unwrap();
+
+            let mut o = 0;
+            loop {
+                std::thread::sleep(Duration::from_millis(500));
+                let _ = stream.write(&[1, 2, 3, 5, 7, 11, 13]);
+                o += 1;
+                println!("{}", o);
+            }
+        }
     }
 }
 
 /// Opens a tcp sockets and starts listening on it
-fn listen(port: u16) {
-    println!("Listening on {}", port);
+fn listen(port: u16, udp: SocketType) {
+    println!("Listening on {} as {:?}", port, udp);
 
-    let connections = Connections::new();
-
-    handle_connections(connections.clone(), |connections, buffer| {
-        let mut connections = connections.data.lock().unwrap();
-        for (port, player_data) in connections.iter_mut() {
-            let stream = &mut player_data.stream;
-            if let Ok(read) = stream.read(buffer) {
-                let data = buffer[..read].to_vec();
-                println!("Received data of size {} from port {}", data.len(), port);
+    match udp {
+        SocketType::Udp => {
+            let socket = UdpSocket::bind(format!("0.0.0.0:{}", port).as_str()).unwrap();
+            let mut buf = [0u8; 1024 * 1024];
+            loop {
+                if let Ok((size, addr)) = socket.recv_from(&mut buf) {
+                    let data = buf[..size].to_vec();
+                    println!("Received data of size {} from address {}", data.len(), addr);
+                }
             }
         }
-    });
+        SocketType::Tcp => {
+            let connections = Connections::new();
 
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-    accept_connections(&listener, connections);
+            handle_connections(connections.clone(), |connections, buffer| {
+                let mut connections = connections.data.lock().unwrap();
+                for (port, player_data) in connections.iter_mut() {
+                    let stream = &mut player_data.stream;
+                    if let Ok(read) = stream.read(buffer) {
+                        let data = buffer[..read].to_vec();
+                        println!("Received data of size {} from port {}", data.len(), port);
+                    }
+                }
+            });
+
+            let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
+            accept_connections(&listener, connections);
+        }
+    }
 }
 
 /// Opens a tcp sockets and starts listening on it
