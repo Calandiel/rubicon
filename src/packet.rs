@@ -50,52 +50,57 @@ pub fn process_packets(
 ) {
     let mut locked_connections = connections.data.lock().unwrap();
     for (port, player_data) in locked_connections.iter_mut() {
-        // println!("Checking");
         // Check for disconnects
-        if let Ok(size) = player_data.stream.peek(buffer) {
-            if size == 0 {
-                // Potential timeout?
-                disconnected.push(*port);
-                continue;
-            }
+        if player_data.stream.is_timed_out() {
+            println!("player timeout");
+            disconnected.push(*port);
+            continue;
         }
 
-        match player_data.stream.read(buffer) {
-            Ok(value) => {
-                println!(
-                    "Received data of size {} from {}",
-                    value, player_data.address
-                );
-                let sliced_data = &buffer[..value];
-                let deserialize = bincode::deserialize::<Packet>(sliced_data);
-                if let Ok(packet) = deserialize {
-                    // Check if the received port exists!
-                    match packet {
-                        Packet::Data(data) => {
-                            println!("Recognized a data packet");
-                            packets.push((*port, data));
-                        }
-                        Packet::NetworkTopology(_) => todo!(),
-                        Packet::Command(command) => {
-                            commands.push(command.command);
-                        }
-                        Packet::Greeting(greeting) => greetings.push((*port, greeting.clone())),
+        if player_data.stream.has_tcp() {
+            match player_data.stream.read(buffer) {
+                Ok(value) => {
+                    println!(
+                        "Received data of size {} from {} while processing packets",
+                        value, player_data.address
+                    );
+                    if value == 0 {
+                        continue; // skip size 0 packets, lol
                     }
-                } else {
-                    println!("Failed to decode the packet.");
-                    rejected_packets_buffers.push(sliced_data.to_vec());
+                    let sliced_data = &buffer[..value];
+                    let deserialize = bincode::deserialize::<Packet>(sliced_data);
+                    if let Ok(packet) = deserialize {
+                        // Check if the received port exists!
+                        match packet {
+                            Packet::Data(data) => {
+                                println!("Recognized a data packet");
+                                packets.push((*port, data));
+                            }
+                            Packet::NetworkTopology(_) => todo!(),
+                            Packet::Command(command) => {
+                                commands.push(command.command);
+                            }
+                            Packet::Greeting(greeting) => greetings.push((*port, greeting.clone())),
+                        }
+                    } else {
+                        println!(
+                            "Failed to decode the packet. Data size: {}",
+                            sliced_data.len()
+                        );
+                        rejected_packets_buffers.push(sliced_data.to_vec());
+                    }
                 }
+                Err(e) => match e.kind() {
+                    std::io::ErrorKind::WouldBlock => {
+                        // dont print when not debugging - itll flood the console cuz most of the time there's nothing to read...
+                        // println!("A stream ({:?}) would block upon reading: {:?}", peer, e)
+                    }
+                    _ => println!(
+                        "A stream ({:?}) returned an error upon reading: {:?}",
+                        player_data.address, e
+                    ),
+                },
             }
-            Err(e) => match e.kind() {
-                std::io::ErrorKind::WouldBlock => {
-                    // dont print when not debugging - itll flood the console cuz most of the time there's nothing to read...
-                    // println!("A stream ({:?}) would block upon reading: {:?}", peer, e)
-                }
-                _ => println!(
-                    "A stream ({:?}) returned an error upon reading: {:?}",
-                    player_data.address, e
-                ),
-            },
         }
     }
 }

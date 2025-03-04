@@ -6,14 +6,21 @@ use crate::{
 pub struct ClientState {
     pub connections: Connections,
     pub player_name: String,
+    pub player_port: u16,
     pub other_player_name: String,
     pub other_player_port: u16,
 }
 impl ClientState {
-    pub fn new(player_name: String, other_player_name: String, other_player_port: u16) -> Self {
+    pub fn new(
+        player_udp_port: u16,
+        player_name: String,
+        other_player_name: String,
+        other_player_port: u16,
+    ) -> Self {
         Self {
             connections: Connections::new(),
             player_name,
+            player_port: player_udp_port,
             other_player_name,
             other_player_port,
         }

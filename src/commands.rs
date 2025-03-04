@@ -35,6 +35,8 @@ pub enum Commands {
         /// Local port to be used as a connection point for the incoming packets.
         /// Note, each client connecting to the host must use a unique port!
         port: u16,
+        /// Address of the udp socket opened on this port to relay packets.
+        udp_port: u16,
         /// Adress of the host
         address: String,
         player_name: String,

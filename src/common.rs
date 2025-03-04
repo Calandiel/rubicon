@@ -12,16 +12,20 @@ pub trait ToConnections {
 pub fn accept_connections(
     tcp_listener: &TcpListener,
     mut udp_address_and_server_relay: Option<(String, std::sync::mpsc::Sender<Vec<u8>>)>,
+    mut relay_packets_receiver: Option<std::sync::mpsc::Sender<Vec<u8>>>,
     connections: Connections,
 ) -> ! {
-    let connections_cloned = connections.clone();
+    // let connections_cloned = connections.clone();
     std::thread::spawn(move || {
-        let connections = connections_cloned;
+        // let connections = connections_cloned;
         if let Some((addr, server_relay)) = &mut udp_address_and_server_relay {
-            println!("Binding a udp socket on {}", addr);
+            println!(
+                "Binding a udp socket on {} while accepting connections",
+                addr
+            );
             let udp = UdpSocket::bind(addr.clone()).unwrap();
             udp.set_nonblocking(true).unwrap();
-            let mut buffer = [0u8; 1024 * 1024];
+            let mut buffer = [0u8; 1024 * 8];
 
             loop {
                 if let Ok((size, addr)) = udp.recv_from(&mut buffer) {
@@ -65,7 +69,7 @@ pub fn handle_connections<
     mut closure: F,
 ) {
     std::thread::spawn(move || {
-        let mut buffer = [0u8; 1024 * 1024];
+        let mut buffer = [0u8; 1024 * 8];
         loop {
             closure(&mut connections, &mut buffer);
         }
