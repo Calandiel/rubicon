@@ -80,6 +80,9 @@ fn host(port: u16) {
             &mut greetings,
             buffer,
             &mut rejected_packets,
+            false,
+            Default::default(),
+            Default::default(),
         );
         relay_packets(server_state, &mut packets);
         process_disconnection(&mut connections, &mut disconnected);
@@ -194,12 +197,15 @@ fn connect(
             &mut greetings,
             buffer,
             &mut rejected_packets,
+            client.is_host(),
+            client.other_player_name.clone(),
+            client.other_player_port,
         );
         process_disconnection(&mut connections, &mut disconnected);
 
         // These are the packets we received on the listener (should all always be local)
         // We will re-route them to the server.
-        for packet in rejected_packets {
+        for (receiver_name, receiver_port, packet) in rejected_packets {
             println!(
                 "Relaying a tcp packet of size {} to the server",
                 packet.len()
@@ -210,8 +216,8 @@ fn connect(
                         socket_type: SocketType::Tcp,
                         sender_name: client.player_name.clone(),
                         sender_port: client.player_port,
-                        receiver_name: client.other_player_name.clone(),
-                        receiver_port: client.other_player_port,
+                        receiver_name,
+                        receiver_port,
                         data: packet,
                     }))
                     .unwrap()[..],

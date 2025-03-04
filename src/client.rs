@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::{
     common::{print_connections, ToConnections},
     server::Connections,
@@ -9,6 +11,9 @@ pub struct ClientState {
     pub player_port: u16,
     pub other_player_name: String,
     pub other_player_port: u16,
+
+    /// A hashset mapping LOCAL ports to outside ports (PLAYERNAME:PORT)
+    pub player_redirection_table: HashSet<u16, (String, u16)>,
 }
 impl ClientState {
     pub fn new(
@@ -23,6 +28,7 @@ impl ClientState {
             player_port,
             other_player_name,
             other_player_port,
+            player_redirection_table: Default::default(),
         }
     }
 

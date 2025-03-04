@@ -48,7 +48,10 @@ pub fn process_packets(
     commands: &mut Vec<String>,
     greetings: &mut Vec<(u16, GreetingPacket)>,
     buffer: &mut [u8],
-    rejected_packets_buffers: &mut Vec<Vec<u8>>,
+    rejected_packets_buffers: &mut Vec<(String, u16, Vec<u8>)>, // ignored by servers
+	is_host: bool, // ignored by servers
+	default_receiver_name: String,
+	default_receiver_port: u16,
 ) {
     let mut locked_connections = connections.data.lock().unwrap();
     for (port, player_data) in locked_connections.iter_mut() {
@@ -90,7 +93,13 @@ pub fn process_packets(
                             sliced_data.len(), player_data.address.port() 
 
                         );
-                        rejected_packets_buffers.push(sliced_data.to_vec());
+						if is_host {
+							// If we're a host, we need to resolve the address ourselves
+	                        // rejected_packets_buffers.push((default_receiver_name.clone(), default_receiver_port ,sliced_data.to_vec()));
+						} else {
+							// If we're not a host, just target the default receiver
+	                        rejected_packets_buffers.push((default_receiver_name.clone(), default_receiver_port ,sliced_data.to_vec()));
+						}
                     }
                 }
                 Err(e) => match e.kind() {
