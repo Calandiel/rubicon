@@ -24,6 +24,13 @@ impl SocketWrapper {
         }
     }
 
+    pub fn from_tcp_and_udp_sockets(tcp: TcpStream, udp: UdpSocket) -> Self {
+        Self {
+            tcp: Some(tcp),
+            udp: Some(udp),
+        }
+    }
+
     /// Peeks into the tcp stream
     pub fn peek(&self, buf: &mut [u8]) -> std::io::Result<usize> {
         self.tcp.as_ref().unwrap().peek(buf)

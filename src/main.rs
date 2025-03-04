@@ -90,7 +90,7 @@ fn host(port: u16) {
     });
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-    accept_connections(&listener, connections);
+    accept_connections(&listener, None, connections);
 }
 
 fn relay_packets(server: &mut ServerState, packets: &mut Vec<(u16, DataPacket)>) {
@@ -286,7 +286,7 @@ fn connect(
     });
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-    accept_connections(&listener, connections);
+    accept_connections(&listener, Some(format!("0.0.0.0:{}", port)), connections);
 }
 
 /// Connects to an address and starts sending tcp packets to it.
@@ -352,7 +352,7 @@ fn listen(port: u16, udp: SocketType) {
             });
 
             let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-            accept_connections(&listener, connections);
+            accept_connections(&listener, None, connections);
         }
     }
 }

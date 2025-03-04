@@ -1,4 +1,4 @@
-use std::net::TcpListener;
+use std::net::{TcpListener, UdpSocket};
 
 use crate::{
     server::{Connections, PlayerData},
@@ -9,9 +9,13 @@ pub trait ToConnections {
     fn to_connections(&mut self) -> &mut Connections;
 }
 
-pub fn accept_connections(listener: &TcpListener, connections: Connections) -> ! {
+pub fn accept_connections(
+    tcp_listener: &TcpListener,
+    udp_listener_address: Option<String>,
+    connections: Connections,
+) -> ! {
     loop {
-        let stream = listener.accept();
+        let stream = tcp_listener.accept();
         if let Ok((tcp_stream, peer)) = stream {
             println!("Received connection from: {}", peer);
             tcp_stream.set_nonblocking(true).unwrap(); // TODO: remove this unwrap
@@ -21,7 +25,14 @@ pub fn accept_connections(listener: &TcpListener, connections: Connections) -> !
                 PlayerData {
                     name: "<missing>".to_string(),
                     address: peer,
-                    stream: SocketWrapper::from_tcp_socket(tcp_stream),
+                    stream: if let Some(addr) = &udp_listener_address {
+                        SocketWrapper::from_tcp_and_udp_sockets(
+                            tcp_stream,
+                            UdpSocket::bind(addr).unwrap(),
+                        )
+                    } else {
+                        SocketWrapper::from_tcp_socket(tcp_stream)
+                    },
                 },
             );
         }
