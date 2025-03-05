@@ -1,5 +1,8 @@
 use std::{
-    collections::HashMap,
+    collections::{
+        hash_map::{Iter, IterMut},
+        HashMap,
+    },
     net::SocketAddr,
     sync::{Arc, Mutex},
 };
@@ -20,16 +23,47 @@ pub struct PublicPlayerData {
     pub name: String,
 }
 
+#[derive(Debug, Default)]
+pub struct InnerConnections {
+    by_tcp_port: HashMap<u16, PlayerData>,
+    // pub by_own
+}
+impl InnerConnections {
+    pub fn get_mut<'a>(&'a mut self, k: &u16) -> Option<&'a mut PlayerData> {
+        self.by_tcp_port.get_mut(k)
+    }
+
+    pub fn get<'a>(&'a self, k: &u16) -> Option<&'a PlayerData> {
+        self.by_tcp_port.get(k)
+    }
+
+    pub fn iter<'a>(&'a self) -> Iter<'a, u16, PlayerData> {
+        self.by_tcp_port.iter()
+    }
+
+    pub fn iter_mut<'a>(&'a mut self) -> IterMut<'a, u16, PlayerData> {
+        self.by_tcp_port.iter_mut()
+    }
+
+    // If the map did not have this key present, [None] is returned.
+    pub fn insert(&mut self, key: u16, value: PlayerData) -> Option<PlayerData> {
+        self.by_tcp_port.insert(key, value)
+    }
+
+    // If the map did not have this key present, [None] is returned.
+    pub fn remove(&mut self, key: &u16) -> Option<PlayerData> {
+        self.by_tcp_port.remove(key)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Connections {
-    pub data: Arc<Mutex<HashMap<u16, PlayerData>>>,
+    pub data: Arc<Mutex<InnerConnections>>,
 }
 impl Connections {
     pub fn new() -> Self {
         Self {
-            data: Arc::new(Mutex::new(
-                std::collections::HashMap::<u16, PlayerData>::default(),
-            )),
+            data: Arc::new(Mutex::new(InnerConnections::default())),
         }
     }
 }

@@ -120,11 +120,27 @@ fn host(port: u16) {
                     had_one = true;
 
                     println!("UDP: {}", addr);
-                    let connections = connections.data.lock().unwrap();
-                    if let Some(player_data) = connections.get(&addr.port()) {
+
+                    // We need to parse the data to check if its a data packet
+                    if let Ok(packet) = bincode::deserialize::<Packet>(&buffer[..size]) {
+                        match packet {
+                            Packet::Data(data_packet) => {
+								
+								data_packet.print();
+								let connections = connections.data.lock().unwrap();
+                    			if let Some(player_data) = connections.get(&addr.port()) {
+                        			println!(
+                            			"RECEIVED UDP PACKET: {} @ {} FROM {}",
+                            			addr, size, player_data.name
+                        			);
+                			    }
+
+							},
+                            _ => println!("Received a non data udp packet on the server from {addr}. This shouldn't happen, we only accept data on the udp socket!")
+                        }
+                    } else {
                         println!(
-                            "RECEIVED UDP PACKET: {} @ {} FROM {}",
-                            addr, size, player_data.name
+                            "Received unstructured udp data from {addr} on the server. Weird!"
                         );
                     }
                 }
@@ -474,7 +490,8 @@ fn connect(
                                     relay_packet_sender
                                         .send((address.to_string(), binary_data.clone()))
                                         .unwrap();
-                                    if let Some(target_stream) = connections.get_mut(&receiver_port)
+                                    if let Some(target_stream) =
+                                        connections.get_mut(&receiver_port)
                                     {
                                         target_stream.stream.touch();
                                     }
