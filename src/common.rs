@@ -1,9 +1,14 @@
-use std::net::{TcpListener, UdpSocket};
+use std::{
+    net::{TcpListener, UdpSocket},
+    time::{Duration, Instant},
+};
 
 use crate::{
     server::{Connections, PlayerData},
     socket::SocketWrapper,
 };
+
+pub const MINIMUM_TICK_RATE_IN_MS: u128 = 5;
 
 pub trait ToConnections {
     fn to_connections(&mut self) -> &mut Connections;
@@ -17,50 +22,75 @@ pub fn accept_connections(
 ) -> ! {
     // let connections_cloned = connections.clone();
     std::thread::spawn(move || {
-        // let connections = connections_cloned;
-        if let Some((addr, server_relay)) = &mut udp_address_and_server_relay {
-            // println!(
-            // "Binding a udp socket on {} while accepting connections",
-            // addr
-            // );
-            let udp = UdpSocket::bind(addr.clone()).unwrap();
-            udp.set_nonblocking(true).unwrap();
-            let mut buffer = [0u8; 1024 * 8];
+        let begin = Instant::now();
 
-            loop {
-                if let Ok((size, addr)) = udp.recv_from(&mut buffer) {
-                    // println!("Received udp traffic of size {} from {}", size, addr);
-                    // Welp, gotta send it next!
-                    // But... where to?
-                    // This could be a server setup ;-;
-                    server_relay
-                        .send((addr.port(), buffer[..size].to_vec()))
-                        .unwrap();
-                }
+        {
+            // let connections = connections_cloned;
+            if let Some((addr, server_relay)) = &mut udp_address_and_server_relay {
+                // println!(
+                // "Binding a udp socket on {} while accepting connections",
+                // addr
+                // );
+                let udp = UdpSocket::bind(addr.clone()).unwrap();
+                udp.set_nonblocking(true).unwrap();
+                let mut buffer = [0u8; 1024 * 64];
 
-                if let Ok(received) = relay_packets_receiver.as_ref().unwrap().try_recv() {
-                    udp.send_to(&received.1, received.0).unwrap();
+                loop {
+                    if let Ok((size, addr)) = udp.recv_from(&mut buffer) {
+                        // println!("Received udp traffic of size {} from {}", size, addr);
+                        // Welp, gotta send it next!
+                        // But... where to?
+                        // This could be a server setup ;-;
+                        server_relay
+                            .send((addr.port(), buffer[..size].to_vec()))
+                            .unwrap();
+                    }
+
+                    if let Ok(received) = relay_packets_receiver.as_ref().unwrap().try_recv() {
+                        println!(
+                            "RECEIVED FROM LOCAL (UDP) :: -> {} @ {}",
+                            received.0,
+                            received.1.len(),
+                        );
+
+                        udp.send_to(&received.1, received.0).unwrap();
+                    }
                 }
             }
+        }
+
+        let remaining_millis = MINIMUM_TICK_RATE_IN_MS as f64 - begin.elapsed().as_millis() as f64;
+        if remaining_millis > 0. {
+            std::thread::sleep(Duration::from_millis(remaining_millis as u64));
         }
     });
 
     loop {
-        let stream = tcp_listener.accept();
-        if let Ok((tcp_stream, peer)) = stream {
-            // println!("Received connection from: {}", peer);
-            tcp_stream.set_nonblocking(true).unwrap(); // TODO: remove this unwrap
-            let mut connections = connections.data.lock().unwrap();
-            // Here is where we add new connections!
-            // We detect them by receiving tcp packets.
-            connections.insert(
-                peer.port(),
-                PlayerData {
-                    name: "<missing>".to_string(),
-                    address: peer,
-                    stream: SocketWrapper::from_tcp_socket(tcp_stream),
-                },
-            );
+        let begin = Instant::now();
+
+        {
+            let stream = tcp_listener.accept();
+            if let Ok((tcp_stream, peer)) = stream {
+                // println!("Received connection from: {}", peer);
+                tcp_stream.set_nonblocking(true).unwrap(); // TODO: remove this unwrap
+                tcp_stream.set_nodelay(true).unwrap();
+                let mut connections = connections.data.lock().unwrap();
+                // Here is where we add new connections!
+                // We detect them by receiving tcp packets.
+                connections.insert(
+                    peer.port(),
+                    PlayerData {
+                        name: "<missing>".to_string(),
+                        address: peer,
+                        stream: SocketWrapper::from_tcp_socket(tcp_stream),
+                    },
+                );
+            }
+        }
+
+        let remaining_millis = MINIMUM_TICK_RATE_IN_MS as f64 - begin.elapsed().as_millis() as f64;
+        if remaining_millis > 0. {
+            std::thread::sleep(Duration::from_millis(remaining_millis as u64));
         }
     }
 }
@@ -79,9 +109,19 @@ pub fn handle_connections<
     mut closure: F,
 ) {
     std::thread::spawn(move || {
-        let mut buffer = [0u8; 1024 * 8];
+        let mut buffer = [0u8; 1024 * 64];
         loop {
-            closure(&mut connections, &mut buffer);
+            let begin = Instant::now();
+
+            {
+                closure(&mut connections, &mut buffer);
+            }
+
+            let remaining_millis =
+                MINIMUM_TICK_RATE_IN_MS as f64 - begin.elapsed().as_millis() as f64;
+            if remaining_millis > 0. {
+                std::thread::sleep(Duration::from_millis(remaining_millis as u64));
+            }
         }
     });
 }

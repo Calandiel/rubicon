@@ -46,7 +46,7 @@ impl SocketWrapper {
     }
 
     pub fn is_timed_out(&self) -> bool {
-        let mut buffer = [0u8; 1024 * 8];
+        let mut buffer = [0u8; 1024 * 64];
         let tcp_can_timeout = if self.has_tcp() {
             if let Ok(size) = self.tcp.as_ref().unwrap().peek(&mut buffer) {
                 if size == 0 {

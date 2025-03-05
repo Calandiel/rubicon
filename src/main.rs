@@ -157,6 +157,7 @@ fn connect(
 ) {
     // The stream that accepts packets from local entities
     let mut local_outgoing_stream = TcpStream::connect(relay_server_address).unwrap();
+    local_outgoing_stream.set_nodelay(true).unwrap();
     // ALWAYS begin by sending our name!
     local_outgoing_stream
         .write(
@@ -358,6 +359,7 @@ fn connect(
                                             match socket_result {
                                 	    	    Ok(connected_socket) => {
 													connected_socket.set_nonblocking(true).unwrap();
+    												connected_socket.set_nodelay(true).unwrap();
                                 				    let mut connections = connections.data.lock().unwrap();
 													if let Some(existing) = connections.get_mut(&receiver_port) {
 														existing.stream.fill_in_tcp(connected_socket);
@@ -380,7 +382,7 @@ fn connect(
                                     // println!("Attempting delivery for {:?}", socket_type);
                                     let mut connections = connections.data.lock().unwrap();
                                     println!(
-                                        "UDP :: {}:{} -> {}:{} @ {}",
+                                        "RECEIVED FROM SERVER (UDP) :: {}:{} -> {}:{} @ {}",
                                         data.sender_name,
                                         data.sender_port,
                                         data.receiver_name,
@@ -465,6 +467,7 @@ fn ping(address: String, udp: SocketType) {
         SocketType::Tcp => {
             let mut stream = TcpStream::connect(address).unwrap();
             stream.set_nonblocking(true).unwrap();
+            stream.set_nodelay(true).unwrap();
 
             let mut o = 0;
             loop {
@@ -485,7 +488,7 @@ fn listen(port: u16, udp: SocketType) {
         SocketType::Udp => {
             println!("Binding a udp socket on 0.0.0.0:{}", port);
             let socket = UdpSocket::bind(format!("0.0.0.0:{}", port).as_str()).unwrap();
-            let mut buf = [0u8; 1024 * 8];
+            let mut buf = [0u8; 1024 * 64];
             let mut counter = 0;
             loop {
                 if let Ok((size, addr)) = socket.recv_from(&mut buf) {
@@ -536,6 +539,7 @@ fn send_command(address: String, command: String) {
     // Outgoing stream
     let mut stream = TcpStream::connect(address).unwrap();
     stream.set_nonblocking(false).unwrap();
+    stream.set_nodelay(true).unwrap();
 
     let data = bincode::serialize(&Packet::Command(CommandPacket { command })).unwrap();
     let _ = stream.write(&data[..]);
