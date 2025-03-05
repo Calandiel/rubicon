@@ -34,7 +34,9 @@ pub enum Commands {
     /// `rubicon connect 636.35.0.24:7777 Player 7000 Host 8000`
     /// This will use a server hosted at 636.35.0.24:7777,
     /// registering ourselves as `Player` with a port 7000, and sending data to `Host:8000.
-    /// Do note than the local game would then attempt to connect to localhost:7000
+    /// Do note than the local game would then attempt to connect to 127.0.0.1:7000
+    /// DO NOT use "localhost" when connecting in games.
+    /// Prefer 127.0.0.1, to let udp traffic through.
     #[command(arg_required_else_help = true)]
     Connect {
         /// Adress of the host
