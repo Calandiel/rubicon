@@ -77,6 +77,7 @@ impl ServerState {
         let mut cons = self.connections.data.lock().unwrap();
         for (port, greeting) in greetings {
             if let Some(player) = cons.get_mut(&port) {
+                println!("NEW PLAYER: {}:{}", greeting.player_name, port);
                 player.name = greeting.player_name;
             }
         }

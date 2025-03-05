@@ -11,14 +11,17 @@ use std::{
     net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
     str::FromStr,
     sync::mpsc::channel,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use clap::Parser;
 use client::ClientState;
 use commands::{Args, Commands, SocketType};
-use common::{accept_connections, handle_connections, DISABLE_NAGLE_ALGORITHM};
-use packet::{process_packets, CommandPacket, DataPacket, GreetingPacket, Packet};
+use common::{
+    accept_connections, handle_connections, BUFFER_SIZE, DISABLE_NAGLE_ALGORITHM,
+    MINIMUM_TICK_RATE_IN_MS,
+};
+use packet::{print_packet, process_packets, CommandPacket, DataPacket, GreetingPacket, Packet};
 use server::{Connections, PlayerData, ServerState};
 use socket::SocketWrapper;
 
@@ -40,7 +43,11 @@ fn main() {
             other_player_name,
             other_player_port,
         ),
-        Commands::Ping { address, socket } => ping(address, socket),
+        Commands::Ping {
+            port,
+            address,
+            socket,
+        } => ping(port, address, socket),
         Commands::Listen { port, socket } => listen(port, socket),
         Commands::Command { address, command } => send_command(address, command),
     }
@@ -94,6 +101,40 @@ fn host(port: u16) {
         // server_state.receive_data_packets(packets);
         server_state.receive_commands(commands);
     });
+
+    let udp_socket = UdpSocket::bind(format!("0.0.0.0:{}", port)).unwrap();
+    udp_socket.set_nonblocking(true).unwrap();
+    {
+        let connections = connections.clone();
+        std::thread::spawn(move || {
+            // Receive UDP packets to relay them to clients.
+            let mut buffer = [0u8; BUFFER_SIZE];
+            loop {
+                // println!("POG");
+                let begin = Instant::now();
+                let mut had_one = false;
+
+                if let Ok((size, addr)) = udp_socket.recv_from(&mut buffer) {
+                    had_one = true;
+
+                    println!("UDP: {}", addr);
+                    let connections = connections.data.lock().unwrap();
+                    if let Some(player_data) = connections.get(&addr.port()) {
+                        println!(
+                            "RECEIVED UDP PACKET: {} @ {} FROM {}",
+                            addr, size, player_data.name
+                        );
+                    }
+                }
+
+                let remaining_millis =
+                    MINIMUM_TICK_RATE_IN_MS as f64 - begin.elapsed().as_millis() as f64;
+                if !had_one && remaining_millis > 0. {
+                    std::thread::sleep(Duration::from_millis(remaining_millis as u64));
+                }
+            }
+        });
+    }
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
     accept_connections(&listener, None, None, connections);
@@ -166,6 +207,7 @@ fn connect(
         .write(
             &bincode::serialize(&Packet::Greeting(GreetingPacket {
                 player_name: player_name.clone(),
+                local_port: port,
             }))
             .unwrap()[..],
         )
@@ -215,10 +257,19 @@ fn connect(
         // These are the packets we received on the listener (should all always be local)
         // We will re-route them to the server.
         for (receiver_name, receiver_port, packet, source_port) in rejected_packets {
-            println!(
-            "RECEIVED PACKET FOR {receiver_name}:{receiver_port}, with source {source_port}, relaying to the server @ {}",
-            packet.len()
+            print_packet(
+                "self".to_string(),
+                source_port,
+                source_port,
+                SocketType::Tcp,
+                receiver_name.clone(),
+                receiver_port,
+                packet.len(),
             );
+            // println!(
+            // "self:{source_port} --(Tcp)--> {receiver_name}:{receiver_port} @ {}",
+            // packet.len()
+            // );
             local_outgoing_stream
                 .write(
                     &bincode::serialize(&Packet::Data(DataPacket {
@@ -268,7 +319,16 @@ fn connect(
                     udp_port,
                 )
             };
-            println!("UDP relay through server for {other_player_name}:{other_player_port} ({source_port}) @ {}", data.len());
+            // println!("UDP relay through server for {other_player_name}:{other_player_port} ({source_port}) @ {}", data.len());
+            print_packet(
+                "self".to_string(),
+                source_port,
+                source_port,
+                SocketType::Udp,
+                other_player_name.clone(),
+                other_player_port,
+                data.len(),
+            );
             // using udp
             //*
             relay_packet_sender
@@ -468,15 +528,15 @@ fn connect(
 }
 
 /// Connects to an address and starts sending tcp packets to it.
-fn ping(address: String, udp: SocketType) {
+fn ping(port: u16, address: String, udp: SocketType) {
     println!("Pinging {} as {:?}", address, udp);
     // Outgoing stream
 
     match udp {
         SocketType::Udp => {
             //
-            println!("Binding a udp socket on 0.0.0.0:45333");
-            let udp = UdpSocket::bind("0.0.0.0:45333").unwrap();
+            println!("Binding a udp socket on 0.0.0.0:{port}");
+            let udp = UdpSocket::bind(format!("0.0.0.0:{port}")).unwrap();
 
             let mut o = 0;
             loop {
@@ -510,7 +570,7 @@ fn listen(port: u16, udp: SocketType) {
         SocketType::Udp => {
             println!("Binding a udp socket on 0.0.0.0:{}", port);
             let socket = UdpSocket::bind(format!("0.0.0.0:{}", port).as_str()).unwrap();
-            let mut buf = [0u8; 1024 * 64];
+            let mut buf = [0u8; BUFFER_SIZE];
             let mut counter = 0;
             loop {
                 if let Ok((size, addr)) = socket.recv_from(&mut buf) {

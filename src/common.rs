@@ -10,6 +10,7 @@ use crate::{
 
 pub const DISABLE_NAGLE_ALGORITHM: bool = true;
 pub const MINIMUM_TICK_RATE_IN_MS: u128 = 1;
+pub const BUFFER_SIZE: usize = 1024 * 64;
 
 pub trait ToConnections {
     fn to_connections(&mut self) -> &mut Connections;
@@ -31,7 +32,7 @@ pub fn accept_connections(
             // );
             let udp = UdpSocket::bind(addr.clone()).unwrap();
             udp.set_nonblocking(true).unwrap();
-            let mut buffer = [0u8; 1024 * 64];
+            let mut buffer = [0u8; BUFFER_SIZE];
 
             loop {
                 let begin = Instant::now();
@@ -44,7 +45,7 @@ pub fn accept_connections(
                         // Welp, gotta send it next!
                         // But... where to?
                         // This could be a server setup ;-;
-                        println!("RECEIVED LOCAL UDP :: {} @ {}", addr, size);
+                        // println!("RECEIVED LOCAL UDP :: {} @ {}", addr, size);
                         server_relay
                             .send((addr.port(), buffer[..size].to_vec()))
                             .unwrap();
@@ -112,7 +113,7 @@ pub fn handle_connections<
     mut closure: F,
 ) {
     std::thread::spawn(move || {
-        let mut buffer = [0u8; 1024 * 64];
+        let mut buffer = [0u8; BUFFER_SIZE];
         loop {
             let begin = Instant::now();
 

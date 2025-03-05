@@ -32,22 +32,37 @@ pub struct DataPacket {
 }
 impl DataPacket {
     pub fn print(&self) {
-        println!(
-            "{}:{} ({}) --({:?})--> {}:{} @ {}",
-            self.sender_name,
+        print_packet(
+            self.sender_name.clone(),
             self.sender_port,
             self.source_port,
             self.socket_type,
-            self.receiver_name,
+            self.receiver_name.clone(),
             self.receiver_port,
-            self.data.len()
-        )
+            self.data.len(),
+        );
     }
+}
+
+pub fn print_packet(
+    sender_name: String,
+    sender_port: u16,
+    source_port: u16,
+    socket_type: SocketType,
+    receiver_name: String,
+    receiver_port: u16,
+    data_len: usize,
+) {
+    println!(
+        "{}:{} ({}) --({:?})--> {}:{} @ {}",
+        sender_name, sender_port, source_port, socket_type, receiver_name, receiver_port, data_len
+    )
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct GreetingPacket {
     pub player_name: String,
+    pub local_port: u16,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -75,7 +90,7 @@ pub fn process_packets(
     for (port, player_data) in locked_connections.iter_mut() {
         // Check for disconnects
         if player_data.stream.is_timed_out() {
-            println!("player timeout");
+            println!("player timeout, {}", player_data.name);
             disconnected.push(*port);
             continue;
         }
@@ -89,10 +104,10 @@ pub fn process_packets(
             for _ in 0..MAX_PACKETS_TO_GO_THROUGH {
                 match player_data.stream.read(buffer) {
                     Ok(value) => {
-                        println!(
-                            "Received data of size {} from {} ({}) while processing packets",
-                            value, player_data.address, player_data.name
-                        );
+                        // println!(
+                        // "Received data of size {} from {} ({}) while processing packets",
+                        // value, player_data.address, player_data.name
+                        // );
                         // Address of the socket we're receiving data from.
 
                         if value == 0 {
@@ -108,17 +123,9 @@ pub fn process_packets(
                                     // data.socket_type == SocketType::Tcp,
                                     // "Tcp sockets should only receive tcp data!"
                                     // );
+                                    data.print();
                                     if data.socket_type == SocketType::Udp {
                                         println!("Received a udp packet on a tcp relay!");
-                                    } else {
-                                        println!(
-                                            "RECEIVED TCP PACKET: {}:{} -> {}:{} @ {}",
-                                            data.sender_name,
-                                            data.sender_port,
-                                            data.receiver_name,
-                                            data.receiver_port,
-                                            data.data.len()
-                                        )
                                     }
 
                                     // println!("Recognized a data packet from {}:{} for {}:{}", data.sender_name, data.sender_port, data.receiver_name, data.receiver_port);

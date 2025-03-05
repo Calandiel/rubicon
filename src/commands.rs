@@ -54,7 +54,11 @@ pub enum Commands {
 
     /// Pings a tcp socket at a given address from a given port.
     #[command(arg_required_else_help = true)]
-    Ping { address: String, socket: SocketType },
+    Ping {
+        port: u16,
+        address: String,
+        socket: SocketType,
+    },
 
     /// Listens on a port
     #[command(arg_required_else_help = true)]
