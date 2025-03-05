@@ -459,8 +459,8 @@ fn connect(
 													connected_socket.set_nonblocking(true).unwrap();
     												connected_socket.set_nodelay(DISABLE_NAGLE_ALGORITHM).unwrap();
                                 				    let mut connections = connections.data.lock().unwrap();
-													if let Some(existing) = connections.get_mut(&receiver_port) {
-														existing.stream.fill_in_tcp(connected_socket);
+													if let Some(existing) = connections.get_target_stream(receiver_port) {
+														existing.fill_in_tcp(connected_socket);
 													} else {
 													let stream = SocketWrapper::from_tcp_socket(connected_socket);
 													connections.insert(receiver_port, PlayerData {
@@ -491,15 +491,15 @@ fn connect(
                                         .send((address.to_string(), binary_data.clone()))
                                         .unwrap();
                                     if let Some(target_stream) =
-                                        connections.get_mut(&receiver_port)
+                                        connections.get_target_stream(receiver_port)
                                     {
-                                        target_stream.stream.touch();
+                                        target_stream.touch();
                                     }
                                 }
                                 if peers.contains(&receiver_port) {
                                     let mut connections = connections.data.lock().unwrap();
                                     let target_stream =
-                                        connections.get_mut(&receiver_port).unwrap();
+                                        connections.get_target_stream(receiver_port).unwrap();
                                     match socket_type {
                                         SocketType::Udp => {
                                             // nothing to do, handled above
@@ -509,8 +509,8 @@ fn connect(
                                             // "TCP Port found, attempting delivery for {:?}",
                                             // socket_type
                                             // );
-                                            assert!(target_stream.stream.has_tcp(), "There must be a tcp socket in place to deliver tcp traffic!");
-                                            target_stream.stream.write(&binary_data[..]).unwrap();
+                                            assert!(target_stream.has_tcp(), "There must be a tcp socket in place to deliver tcp traffic!");
+                                            target_stream.write(&binary_data[..]).unwrap();
                                             // TODO: verify that this is fine
                                         }
                                     }

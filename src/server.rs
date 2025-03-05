@@ -37,9 +37,12 @@ impl ServerState {
     pub fn receive_greetings(&mut self, greetings: Vec<(u16, GreetingPacket)>) {
         let mut cons = self.connections.data.lock().unwrap();
         for (port, greeting) in greetings {
-            if let Some(player) = cons.get_mut(&port) {
+            if let Some(_) = cons.get(&port) {
                 println!("NEW PLAYER: {}:{}", greeting.player_name, port);
-                player.name = greeting.player_name;
+                if !cons.update_player_name(port, greeting.player_name) {
+                    println!("Removing the impostor player...");
+                    cons.remove(&port);
+                }
             }
         }
     }

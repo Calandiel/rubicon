@@ -29,8 +29,34 @@ pub struct InnerConnections {
     // pub by_own
 }
 impl InnerConnections {
-    pub fn get_mut<'a>(&'a mut self, k: &u16) -> Option<&'a mut PlayerData> {
-        self.by_tcp_port.get_mut(k)
+    // Breaks encapsulation...
+    // pub fn get_mut<'a>(&'a mut self, k: &u16) -> Option<&'a mut PlayerData> {
+    // self.by_tcp_port.get_mut(k)
+    // }
+
+    pub fn get_target_stream<'a>(&'a mut self, tcp_port: u16) -> Option<&'a mut SocketWrapper> {
+        if let Some(v) = self.by_tcp_port.get_mut(&tcp_port) {
+            return Some(&mut v.stream);
+        }
+        None
+    }
+
+    /// Returns whether the operation was a success. If it wasn't, it means we're dealing with a duplicate name!
+    pub fn update_player_name(&mut self, tcp_port: u16, new_name: String) -> bool {
+        let entry = self
+            .by_tcp_port
+            .iter()
+            .find(|(_, player)| player.name == new_name);
+        if let Some(_) = entry {
+            println!("DUPLICATE PLAYER NAME: {new_name}");
+            return false;
+        }
+
+        if let Some(player) = self.by_tcp_port.get_mut(&tcp_port) {
+            player.name = new_name;
+        }
+
+        true
     }
 
     pub fn get<'a>(&'a self, k: &u16) -> Option<&'a PlayerData> {
