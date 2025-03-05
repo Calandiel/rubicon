@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     common::{print_connections, ToConnections},
-    server::Connections,
+    connections::Connections,
 };
 
 pub struct ClientState {

@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    server::{Connections, PlayerData},
+    connections::{Connections, PlayerData},
     socket::SocketWrapper,
 };
 

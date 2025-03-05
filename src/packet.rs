@@ -2,17 +2,13 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    commands::SocketType,
-    server::{Connections, PublicPlayerData},
-};
+use crate::{commands::SocketType, connections::Connections};
 
 #[derive(Serialize, Deserialize)]
 pub enum Packet {
     Command(CommandPacket),
     Data(DataPacket),
     Greeting(GreetingPacket),
-    NetworkTopology(NetworkTopologyPacket),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -63,11 +59,6 @@ pub fn print_packet(
 pub struct GreetingPacket {
     pub player_name: String,
     pub local_port: u16,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct NetworkTopologyPacket {
-    pub players: Vec<PublicPlayerData>,
 }
 
 /// Processes incomming packets
@@ -136,7 +127,6 @@ pub fn process_packets(
                                     // redirection_table.insert(k, v)
                                     // }
                                 }
-                                Packet::NetworkTopology(_) => todo!(),
                                 Packet::Command(command) => {
                                     commands.push(command.command);
                                 }

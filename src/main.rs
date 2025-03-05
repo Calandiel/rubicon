@@ -1,6 +1,7 @@
 pub mod client;
 pub mod commands;
 pub mod common;
+pub mod connections;
 pub mod packet;
 pub mod server;
 pub mod socket;
@@ -21,8 +22,9 @@ use common::{
     accept_connections, handle_connections, BUFFER_SIZE, DISABLE_NAGLE_ALGORITHM,
     MINIMUM_TICK_RATE_IN_MS,
 };
+use connections::{Connections, PlayerData};
 use packet::{print_packet, process_packets, CommandPacket, DataPacket, GreetingPacket, Packet};
-use server::{Connections, PlayerData, ServerState};
+use server::ServerState;
 use socket::SocketWrapper;
 
 fn main() {
@@ -222,7 +224,7 @@ fn connect(
     let connections = client.connections.clone();
 
     // let relay_server_address = relay_server_address.clone();
-    handle_connections(client, move |client, buffer, had_one| {
+    handle_connections(client, move |client, buffer, _had_one| {
         let peers: HashSet<u16> = client
             .connections
             .data
