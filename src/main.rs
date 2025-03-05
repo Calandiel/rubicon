@@ -56,7 +56,7 @@ fn host(port: u16) {
     // process existing connections - we need to read the data from them and then pass it to the intended receiver
 
     let _cached = Default::default();
-    handle_connections(server_state, move |server_state, buffer| {
+    handle_connections(server_state, move |server_state, buffer, _had_one| {
         // let peers: HashSet<u16> = server_state
         // .connections
         // .data
@@ -129,6 +129,7 @@ fn relay_packets(server: &mut ServerState, packets: &mut Vec<(u16, DataPacket)>)
                     ),
                 }
             } else {
+                // No error!
                 // println!(
                 // "Packet delivered from port {} to player {}",
                 // port, receiver_name
@@ -156,7 +157,7 @@ fn connect(
     other_player_port: u16,
 ) {
     // The stream that accepts packets from local entities
-    let mut local_outgoing_stream = TcpStream::connect(relay_server_address).unwrap();
+    let mut local_outgoing_stream = TcpStream::connect(relay_server_address.clone()).unwrap();
     local_outgoing_stream.set_nodelay(true).unwrap();
     // ALWAYS begin by sending our name!
     local_outgoing_stream
@@ -168,6 +169,7 @@ fn connect(
         )
         .unwrap();
     local_outgoing_stream.set_nonblocking(true).unwrap(); // set non blocking AFTER we send the packet
+
     let (udp_packet_sender, udp_packet_receiver) = channel::<(u16, Vec<u8>)>();
     let (relay_packet_sender, relay_packet_receiver) = channel::<(String, Vec<u8>)>();
 
@@ -175,7 +177,8 @@ fn connect(
     let client = ClientState::new(player_name, port, other_player_name, other_player_port);
     let connections = client.connections.clone();
 
-    handle_connections(client, move |client, buffer| {
+    // let relay_server_address = relay_server_address.clone();
+    handle_connections(client, move |client, buffer, had_one| {
         let peers: HashSet<u16> = client
             .connections
             .data
@@ -233,7 +236,7 @@ fn connect(
                 )
                 .unwrap(); // TODO: verify that this is OK
         }
-        // Remember to also receive UDP!
+        // Remember to also relay UDP!
         while let Ok((udp_port, data)) = udp_packet_receiver.try_recv() {
             // println!("Relaying a udp packet of size {} to the server", data.len());
 
@@ -248,7 +251,7 @@ fn connect(
                         source_port.clone(),
                     )
                 } else {
-                    panic!("redirection table DOESNTcontain an entry for the udp port {udp_port}");
+                    panic!("redirection table DOESNT contain an entry for the udp port {udp_port}");
                     // TODO: should we really panic?
                     // (
                     // client.other_player_name.clone(),
@@ -263,7 +266,27 @@ fn connect(
                     udp_port,
                 )
             };
-            // println!("udp delivering to {other_player_name}:{other_player_port} for the source port {source_port}");
+            println!("UDP relay through server for {other_player_name}:{other_player_port} ({source_port}) @ {}", data.len());
+            // using udp
+            /*
+            relay_packet_sender
+                .send((
+                    relay_server_address.clone(),
+                    bincode::serialize(&Packet::Data(DataPacket {
+                        socket_type: SocketType::Udp,
+                        sender_name: client.player_name.clone(),
+                        sender_port: client.player_port,
+                        receiver_name: other_player_name,
+                        receiver_port: other_player_port,
+                        data,
+                        source_port, // TODO: fix this? If it's even an issue, kekw
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap();
+            */
+            //*
+            // using tcp
             local_outgoing_stream
                 .write(
                     &bincode::serialize(&Packet::Data(DataPacket {
@@ -278,6 +301,7 @@ fn connect(
                     .unwrap()[..],
                 )
                 .unwrap(); // TODO: verify that this is OK
+                           // */
         }
 
         // After reading packets, we also need to receive packets from the server...
@@ -424,6 +448,8 @@ fn connect(
                         }
                     }
                 }
+
+                // *had_one = true;
             }
             Err(e) => match e.kind() {
                 std::io::ErrorKind::WouldBlock => {
@@ -507,7 +533,7 @@ fn listen(port: u16, udp: SocketType) {
             let connections = Connections::new();
 
             let mut counter = 0;
-            handle_connections(connections.clone(), move |connections, buffer| {
+            handle_connections(connections.clone(), move |connections, buffer, _had_one| {
                 let mut connections = connections.data.lock().unwrap();
                 for (port, player_data) in connections.iter_mut() {
                     let stream = &mut player_data.stream;

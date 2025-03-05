@@ -22,55 +22,57 @@ pub fn accept_connections(
 ) -> ! {
     // let connections_cloned = connections.clone();
     std::thread::spawn(move || {
-        let begin = Instant::now();
+        // let connections = connections_cloned;
+        if let Some((addr, server_relay)) = &mut udp_address_and_server_relay {
+            // println!(
+            // "Binding a udp socket on {} while accepting connections",
+            // addr
+            // );
+            let udp = UdpSocket::bind(addr.clone()).unwrap();
+            udp.set_nonblocking(true).unwrap();
+            let mut buffer = [0u8; 1024 * 64];
 
-        {
-            // let connections = connections_cloned;
-            if let Some((addr, server_relay)) = &mut udp_address_and_server_relay {
-                // println!(
-                // "Binding a udp socket on {} while accepting connections",
-                // addr
-                // );
-                let udp = UdpSocket::bind(addr.clone()).unwrap();
-                udp.set_nonblocking(true).unwrap();
-                let mut buffer = [0u8; 1024 * 64];
+            loop {
+                let begin = Instant::now();
+                let mut had_one = false;
 
-                loop {
+                {
                     if let Ok((size, addr)) = udp.recv_from(&mut buffer) {
+                        had_one = true;
                         // println!("Received udp traffic of size {} from {}", size, addr);
                         // Welp, gotta send it next!
                         // But... where to?
                         // This could be a server setup ;-;
+                        println!("RECEIVED LOCAL UDP :: {} @ {}", addr, size);
                         server_relay
                             .send((addr.port(), buffer[..size].to_vec()))
                             .unwrap();
                     }
 
-                    if let Ok(received) = relay_packets_receiver.as_ref().unwrap().try_recv() {
-                        println!(
-                            "RECEIVED FROM LOCAL (UDP) :: -> {} @ {}",
-                            received.0,
-                            received.1.len(),
-                        );
-
-                        udp.send_to(&received.1, received.0).unwrap();
+                    if let Ok((addr, data)) = relay_packets_receiver.as_ref().unwrap().try_recv() {
+                        had_one = true;
+                        println!("RELAYING DATA TO :: -> {} @ {}", addr, data.len());
+                        udp.send_to(&data, addr).unwrap();
                     }
                 }
-            }
-        }
 
-        let remaining_millis = MINIMUM_TICK_RATE_IN_MS as f64 - begin.elapsed().as_millis() as f64;
-        if remaining_millis > 0. {
-            std::thread::sleep(Duration::from_millis(remaining_millis as u64));
+                let remaining_millis =
+                    MINIMUM_TICK_RATE_IN_MS as f64 - begin.elapsed().as_millis() as f64;
+                if !had_one && remaining_millis > 0. {
+                    std::thread::sleep(Duration::from_millis(remaining_millis as u64));
+                }
+            }
         }
     });
 
     loop {
         let begin = Instant::now();
 
+        let mut had_one = false;
         {
             let stream = tcp_listener.accept();
             if let Ok((tcp_stream, peer)) = stream {
+                had_one = true;
                 // println!("Received connection from: {}", peer);
                 tcp_stream.set_nonblocking(true).unwrap(); // TODO: remove this unwrap
                 tcp_stream.set_nodelay(true).unwrap();
@@ -89,7 +91,7 @@ pub fn accept_connections(
         }
 
         let remaining_millis = MINIMUM_TICK_RATE_IN_MS as f64 - begin.elapsed().as_millis() as f64;
-        if remaining_millis > 0. {
+        if !had_one && remaining_millis > 0. {
             std::thread::sleep(Duration::from_millis(remaining_millis as u64));
         }
     }
@@ -103,7 +105,7 @@ pub fn print_connections(connections: &Connections) {
 
 pub fn handle_connections<
     T: ToConnections + Send + 'static,
-    F: FnMut(&mut T, &mut [u8]) -> () + Send + 'static,
+    F: FnMut(&mut T, &mut [u8], &mut bool) -> () + Send + 'static,
 >(
     mut connections: T,
     mut closure: F,
@@ -113,13 +115,14 @@ pub fn handle_connections<
         loop {
             let begin = Instant::now();
 
+            let mut had_one = false;
             {
-                closure(&mut connections, &mut buffer);
+                closure(&mut connections, &mut buffer, &mut had_one);
             }
 
             let remaining_millis =
                 MINIMUM_TICK_RATE_IN_MS as f64 - begin.elapsed().as_millis() as f64;
-            if remaining_millis > 0. {
+            if !had_one && remaining_millis > 0. {
                 std::thread::sleep(Duration::from_millis(remaining_millis as u64));
             }
         }
