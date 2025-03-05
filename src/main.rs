@@ -156,7 +156,7 @@ fn connect(
     other_player_name: String,
     other_player_port: u16,
 ) {
-    // The stream that accepts packets from local entities
+    // The stream that talks to the server
     let mut local_outgoing_stream = TcpStream::connect(relay_server_address.clone()).unwrap();
     local_outgoing_stream
         .set_nodelay(DISABLE_NAGLE_ALGORITHM)
@@ -215,10 +215,10 @@ fn connect(
         // These are the packets we received on the listener (should all always be local)
         // We will re-route them to the server.
         for (receiver_name, receiver_port, packet, source_port) in rejected_packets {
-            // println!(
-            // "Relaying a tcp packet of size {} for {receiver_name}:{receiver_port}, with source {source_port}, to the server",
-            // packet.len()
-            // );
+            println!(
+            "RECEIVED PACKET FOR {receiver_name}:{receiver_port}, with source {source_port}, relaying to the server @ {}",
+            packet.len()
+            );
             local_outgoing_stream
                 .write(
                     &bincode::serialize(&Packet::Data(DataPacket {
@@ -270,7 +270,7 @@ fn connect(
             };
             println!("UDP relay through server for {other_player_name}:{other_player_port} ({source_port}) @ {}", data.len());
             // using udp
-            /*
+            //*
             relay_packet_sender
                 .send((
                     relay_server_address.clone(),
@@ -286,8 +286,8 @@ fn connect(
                     .unwrap(),
                 ))
                 .unwrap();
-            */
-            //*
+            // */
+            /*
             // using tcp
             local_outgoing_stream
                 .write(
@@ -330,14 +330,8 @@ fn connect(
                                     format!("127.0.0.1:{}", receiver_port).as_str(),
                                 )
                                 .unwrap();
-                                // println!(
-                                // "Received {} bytes for port {}, from {} for {} on socket {}",
-                                // data.data.len(),
-                                // receiver_port,
-                                // data.sender_name,
-                                // data.receiver_name,
-                                // local_outgoing_stream.peer_addr().unwrap()
-                                // );
+
+                                data.print();
 
                                 // Hosts need to keep their redirection tables in sync!
                                 if client.is_host() {
