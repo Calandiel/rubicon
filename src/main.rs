@@ -208,12 +208,11 @@ fn connect(
 
         // These are the packets we received on the listener (should all always be local)
         // We will re-route them to the server.
-        for (receiver_name, receiver_port, packet) in rejected_packets {
+        for (receiver_name, receiver_port, packet, source_port) in rejected_packets {
             println!(
-                "Relaying a tcp packet of size {} for {receiver_name}:{receiver_port} to the server",
+                "Relaying a tcp packet of size {} for {receiver_name}:{receiver_port}, with source {source_port}, to the server",
                 packet.len()
             );
-
             local_outgoing_stream
                 .write(
                     &bincode::serialize(&Packet::Data(DataPacket {
@@ -221,8 +220,13 @@ fn connect(
                         sender_name: client.player_name.clone(),
                         sender_port: client.player_port,
                         receiver_name,
-                        receiver_port,
+                        receiver_port: if client.is_host() {
+                            source_port
+                        } else {
+                            receiver_port
+                        },
                         data: packet,
+                        source_port,
                     }))
                     .unwrap()[..],
                 )
@@ -240,6 +244,7 @@ fn connect(
                         receiver_name: client.other_player_name.clone(),
                         receiver_port: client.other_player_port,
                         data,
+                        source_port: 0, // TODO: fix this? If it's even an issue, kekw
                     }))
                     .unwrap()[..],
                 )
@@ -286,12 +291,12 @@ fn connect(
                                         .contains_key(&data.receiver_port)
                                     {
                                         println!(
-                                            "Adding a new redirection table entry: {} -> {}:{}",
-                                            data.receiver_port, data.sender_name, data.sender_port
+                                            "Adding a new redirection table entry: {} -> {}:{}, with source port {}",
+                                            data.receiver_port, data.sender_name, data.sender_port, data.source_port
                                         );
                                         client.player_redirection_table.insert(
                                             data.receiver_port,
-                                            (data.sender_name, data.sender_port),
+                                            (data.sender_name, data.sender_port, data.source_port),
                                         );
                                     }
                                 }

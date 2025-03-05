@@ -28,6 +28,7 @@ pub struct DataPacket {
     pub receiver_name: String,
     pub receiver_port: u16,
     pub data: Vec<u8>,
+	pub source_port: u16, 
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -50,11 +51,11 @@ pub fn process_packets(
     commands: &mut Vec<String>,
     greetings: &mut Vec<(u16, GreetingPacket)>,
     buffer: &mut [u8],
-    rejected_packets_buffers: &mut Vec<(String, u16, Vec<u8>)>, // ignored by servers
+    rejected_packets_buffers: &mut Vec<(String, u16, Vec<u8>, u16)>, // ignored by servers
 	is_host: bool, // ignored by servers
 	default_receiver_name: String,
 	default_receiver_port: u16,
-	redirection_table: &HashMap<u16, (String, u16)>,
+	redirection_table: &HashMap<u16, (String, u16, u16)>,
 ) {
     let mut locked_connections = connections.data.lock().unwrap();
     for (port, player_data) in locked_connections.iter_mut() {
@@ -66,13 +67,16 @@ pub fn process_packets(
         }
 
         if player_data.stream.has_tcp() {
+			let tcp_address = player_data.stream.get_tcp_addr().unwrap();
             match player_data.stream.read(buffer) {
-                Ok(value) => {
+				Ok(value) => {
                     println!(
                         "Received data of size {} from {} ({}) while processing packets",
                         value, player_data.address, player_data.name
                     );
-                    if value == 0 {
+					// Address of the socket we're receiving data from.
+
+					if value == 0 {
                         continue; // skip size 0 packets, lol
                     }
                     let sliced_data = &buffer[..value];
@@ -104,15 +108,16 @@ pub fn process_packets(
 						if is_host {
 							// If we're a host, we need to resolve the address ourselves
 	                        // rejected_packets_buffers.push((default_receiver_name.clone(), default_receiver_port ,sliced_data.to_vec()));
-							if let Some((receiver_name, receiver_port)) = redirection_table.get(port) {
-								rejected_packets_buffers.push((receiver_name.clone(), *receiver_port, sliced_data.to_vec()));
+							if let Some((receiver_name, receiver_port, tcp_port)) = redirection_table.get(port) {
+								rejected_packets_buffers.push((receiver_name.clone(), *receiver_port, sliced_data.to_vec(), *tcp_port));
 								println!("Retrieved receiver name and port. Message scheduled for transmission.");
 							} else {
 								println!("Retrieval of receivers name failed on port: {}", *port)
 							}
 						} else {
-							// If we're not a host, just target the default receiver
-	                        rejected_packets_buffers.push((default_receiver_name.clone(), default_receiver_port, sliced_data.to_vec()));
+							// If we're not a host, just target the default receiver.
+							// Also, use the tcp adress as the port
+	                        rejected_packets_buffers.push((default_receiver_name.clone(), default_receiver_port, sliced_data.to_vec(), tcp_address.port()));
 						}
                     }
                 }

@@ -85,6 +85,10 @@ impl SocketWrapper {
         self.tcp.as_ref().unwrap().read(buf)
     }
 
+    pub fn get_tcp_addr(&self) -> std::io::Result<std::net::SocketAddr> {
+        self.tcp.as_ref().unwrap().peer_addr()
+    }
+
     /// Writes the tcp stream
     pub fn write(&self, buf: &[u8]) -> std::io::Result<usize> {
         self.tcp.as_ref().unwrap().write(buf)

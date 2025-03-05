@@ -12,8 +12,8 @@ pub struct ClientState {
     pub other_player_name: String,
     pub other_player_port: u16,
 
-    /// A hashset mapping LOCAL ports to outside ports (PLAYERNAME:PORT)
-    pub player_redirection_table: HashMap<u16, (String, u16)>,
+    /// A hashset mapping LOCAL ports to outside ports (PLAYERNAME, PLAYERPORT, ORIGINALTCPSOCKETPORT)
+    pub player_redirection_table: HashMap<u16, (String, u16, u16)>,
 }
 impl ClientState {
     pub fn new(
