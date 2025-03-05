@@ -446,10 +446,17 @@ fn listen(port: u16, udp: SocketType) {
             println!("Binding a udp socket on 0.0.0.0:{}", port);
             let socket = UdpSocket::bind(format!("0.0.0.0:{}", port).as_str()).unwrap();
             let mut buf = [0u8; 1024 * 8];
+            let mut counter = 0;
             loop {
                 if let Ok((size, addr)) = socket.recv_from(&mut buf) {
                     let data = buf[..size].to_vec();
                     println!("Received data of size {} from address {}", data.len(), addr);
+
+                    counter += 1;
+                    if counter % 7 == 3 {
+                        println!("Pinging back on the same tcp connection...");
+                        let _sent = socket.send_to(&data, addr); // TODO: handle this gracefully
+                    }
                 }
             }
         }
