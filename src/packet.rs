@@ -90,10 +90,14 @@ pub fn process_packets(
                             // Check if the received port exists!
                             match packet {
                                 Packet::Data(data) => {
-                                    assert!(
-                                        data.socket_type == SocketType::Tcp,
-                                        "Tcp sockets should only receive tcp data!"
-                                    );
+                                    // assert!(
+                                    // data.socket_type == SocketType::Tcp,
+                                    // "Tcp sockets should only receive tcp data!"
+                                    // );
+                                    if data.socket_type == SocketType::Udp {
+                                        println!("Received a udp socket on a tcp relay!");
+                                    }
+
                                     // println!("Recognized a data packet from {}:{} for {}:{}", data.sender_name, data.sender_port, data.receiver_name, data.receiver_port);
                                     packets.push((*port, data));
 

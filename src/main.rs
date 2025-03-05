@@ -17,7 +17,7 @@ use std::{
 use clap::Parser;
 use client::ClientState;
 use commands::{Args, Commands, SocketType};
-use common::{accept_connections, handle_connections};
+use common::{accept_connections, handle_connections, DISABLE_NAGLE_ALGORITHM};
 use packet::{process_packets, CommandPacket, DataPacket, GreetingPacket, Packet};
 use server::{Connections, PlayerData, ServerState};
 use socket::SocketWrapper;
@@ -158,7 +158,9 @@ fn connect(
 ) {
     // The stream that accepts packets from local entities
     let mut local_outgoing_stream = TcpStream::connect(relay_server_address.clone()).unwrap();
-    local_outgoing_stream.set_nodelay(true).unwrap();
+    local_outgoing_stream
+        .set_nodelay(DISABLE_NAGLE_ALGORITHM)
+        .unwrap();
     // ALWAYS begin by sending our name!
     local_outgoing_stream
         .write(
@@ -383,7 +385,7 @@ fn connect(
                                             match socket_result {
                                 	    	    Ok(connected_socket) => {
 													connected_socket.set_nonblocking(true).unwrap();
-    												connected_socket.set_nodelay(true).unwrap();
+    												connected_socket.set_nodelay(DISABLE_NAGLE_ALGORITHM).unwrap();
                                 				    let mut connections = connections.data.lock().unwrap();
 													if let Some(existing) = connections.get_mut(&receiver_port) {
 														existing.stream.fill_in_tcp(connected_socket);
@@ -493,7 +495,7 @@ fn ping(address: String, udp: SocketType) {
         SocketType::Tcp => {
             let mut stream = TcpStream::connect(address).unwrap();
             stream.set_nonblocking(true).unwrap();
-            stream.set_nodelay(true).unwrap();
+            stream.set_nodelay(DISABLE_NAGLE_ALGORITHM).unwrap();
 
             let mut o = 0;
             loop {
@@ -565,7 +567,7 @@ fn send_command(address: String, command: String) {
     // Outgoing stream
     let mut stream = TcpStream::connect(address).unwrap();
     stream.set_nonblocking(false).unwrap();
-    stream.set_nodelay(true).unwrap();
+    stream.set_nodelay(DISABLE_NAGLE_ALGORITHM).unwrap();
 
     let data = bincode::serialize(&Packet::Command(CommandPacket { command })).unwrap();
     let _ = stream.write(&data[..]);

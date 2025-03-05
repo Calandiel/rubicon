@@ -8,6 +8,7 @@ use crate::{
     socket::SocketWrapper,
 };
 
+pub const DISABLE_NAGLE_ALGORITHM: bool = false;
 pub const MINIMUM_TICK_RATE_IN_MS: u128 = 5;
 
 pub trait ToConnections {
@@ -75,7 +76,7 @@ pub fn accept_connections(
                 had_one = true;
                 // println!("Received connection from: {}", peer);
                 tcp_stream.set_nonblocking(true).unwrap(); // TODO: remove this unwrap
-                tcp_stream.set_nodelay(true).unwrap();
+                tcp_stream.set_nodelay(DISABLE_NAGLE_ALGORITHM).unwrap();
                 let mut connections = connections.data.lock().unwrap();
                 // Here is where we add new connections!
                 // We detect them by receiving tcp packets.
