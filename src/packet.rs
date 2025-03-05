@@ -71,7 +71,7 @@ pub fn process_packets(
 
             // The amount of packets to drain in a single iteration. We need more than one cuz some programs could be FLOODING our connection,
             // We can't set it too high, though, as that'd fuck up OTHER connections.
-            const MAX_PACKETS_TO_GO_THROUGH: usize = 5;
+            const MAX_PACKETS_TO_GO_THROUGH: usize = usize::MAX;
             for _ in 0..MAX_PACKETS_TO_GO_THROUGH {
                 match player_data.stream.read(buffer) {
                     Ok(value) => {
