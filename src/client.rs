@@ -15,6 +15,7 @@ pub struct ClientLocalConnection {
     pub original_socket_port: u16,
     pub stream: Option<TcpStream>,
     pub udp_socket: Option<UdpSocket>,
+    pub received_udp_packets_counts: u64,
 }
 
 pub struct ClientState {
@@ -131,6 +132,7 @@ impl ClientState {
             port: data.sender_port,
             original_socket_port: data.source_port,
             stream: Some(tcp_socket),
+            received_udp_packets_counts: 0,
             udp_socket: None,
         }
     }
@@ -145,6 +147,7 @@ impl ClientState {
             port: data.sender_port,
             original_socket_port: data.source_port,
             stream: None,
+            received_udp_packets_counts: 0,
             udp_socket: Some(udp_socket),
         }
     }
