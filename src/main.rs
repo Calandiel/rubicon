@@ -8,13 +8,14 @@ pub mod socket;
 
 use std::{
     collections::HashSet,
-    io::{Read, Write},
+    io::{ErrorKind, Read, Write},
     net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
     str::FromStr,
     sync::mpsc::channel,
     time::{Duration, Instant},
 };
 
+use bincode::deserialize;
 use clap::Parser;
 use client::{ClientLocalConnection, ClientState};
 use commands::{Args, Commands, SocketType};
@@ -221,7 +222,7 @@ fn process_disconnection(connections: &mut Connections, disconnected: &mut Vec<u
 }
 
 fn connect(
-    port: u16,
+    player_client_port: u16,
     relay_server_address: String,
     player_name: String,
     other_player_name: String,
@@ -237,7 +238,7 @@ fn connect(
         .write(
             &bincode::serialize(&Packet::Greeting(GreetingPacket {
                 player_name: player_name.clone(),
-                local_port: port,
+                local_port: player_client_port,
             }))
             .unwrap()[..],
         )
@@ -249,8 +250,8 @@ fn connect(
 
     // Incomming stream
     let client: ClientState = ClientState::new(
-        player_name,
-        port,
+        player_name.clone(),
+        player_client_port,
         other_player_name.clone(),
         other_player_port,
     );
@@ -285,7 +286,7 @@ fn connect(
             client.is_host(),
             client.other_player_name.clone(),
             client.other_player_port,
-            &client.player_redirection_table,
+            &client.local_redirection_table,
         );
         process_disconnection(&mut connections, &mut disconnected);
 
@@ -333,7 +334,7 @@ fn connect(
                 let player_identifier = format!("{}:{}", other_player_name, other_player_port);
                 println!("IDENTIFIER: {}", player_identifier);
                 if let Some(local_client_connection) =
-                    client.player_redirection_table.get(&player_identifier)
+                    client.local_redirection_table.get(&player_identifier)
                 {
                     let (player_name, _player_port, source_port) = (
                         local_client_connection.player_name.clone(),
@@ -412,6 +413,57 @@ fn connect(
                 panic!("SERVER TIMEOUT!");
             }
         }
+        // And from the clients connected...
+        for (_, local_connection) in client.local_redirection_table.iter_mut() {
+            //
+            // println!(
+            // "TRYING TO READ FOR: {}:{} ({})",
+            // local_connection.player_name,
+            // local_connection.port,
+            // local_connection.original_socket_port
+            // );
+            if let Ok(size) = local_connection.stream.read(buffer) {
+                let data = &buffer[..size];
+
+                // Check if the data is structured.
+                if let Ok(_r) = bincode::deserialize::<Packet>(data) {
+                    // Structured data, shouldnt happen...
+                    println!("Received structured data on a local client socket! This should not happen!");
+                } else {
+                    // Unstructured data
+                    // Needs to be relayed to the server...
+                    let data_packet = Packet::Data(DataPacket {
+                        socket_type: SocketType::Tcp,
+                        sender_name: client.player_name.clone(),
+                        sender_port: client.player_port,
+                        receiver_name: local_connection.player_name.clone(),
+                        receiver_port: local_connection.original_socket_port,
+                        data: data.to_vec(),
+                        source_port: local_connection.stream.peer_addr().unwrap().port(),
+                    });
+                    if let Err(e) =
+                        local_outgoing_stream.write(&bincode::serialize(&data_packet).unwrap())
+                    {
+                        match e.kind() {
+                            ErrorKind::WouldBlock => {
+                                //
+                            }
+                            _ => {
+                                println!(
+                                    "Failed to relay unstructured data for {}:{} ({})",
+                                    local_connection.player_name,
+                                    local_connection.port,
+                                    local_connection.original_socket_port
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Failed to read
+            }
+        }
+        // Receive data from the server and relay it to local connections
         match local_outgoing_stream.read(buffer) {
             Ok(received_data) => {
                 let _socket_port = local_outgoing_stream.peer_addr().unwrap().port();
@@ -433,10 +485,11 @@ fn connect(
 
                                 data.print("packet to be sent: ");
 
-                                // Hosts need to keep their redirection tables in sync!
+                                // Create the socket if it doesn't exist yet
                                 if client.is_host() {
+                                    // Host logic
                                     if !client
-                                        .player_redirection_table
+                                        .local_redirection_table
                                         .contains_key(&data.get_original_player_identifier())
                                     {
                                         // println!(
@@ -452,7 +505,7 @@ fn connect(
                                                 .set_nodelay(DISABLE_NAGLE_ALGORITHM)
                                                 .unwrap();
                                             tcp_socket.set_nonblocking(true).unwrap();
-                                            client.player_redirection_table.insert(
+                                            client.local_redirection_table.insert(
                                                 data.get_original_player_identifier(),
                                                 ClientLocalConnection {
                                                     player_name: data.sender_name.clone(),
@@ -468,26 +521,58 @@ fn connect(
                                             );
                                         }
                                     }
-                                }
 
-                                if let Some(local_connection) = client
-                                    .player_redirection_table
-                                    .get_mut(&data.get_original_player_identifier())
-                                {
-                                    //
-                                    if data.socket_type == SocketType::Tcp {
-                                        if let Err(e) = local_connection.stream.write(&data.data) {
-                                            match e.kind() {
-                                                std::io::ErrorKind::WouldBlock => {
-                                                    // nothing to do...
+                                    // Send data to the TCP socket
+                                    if let Some(local_connection) = client
+                                        .local_redirection_table
+                                        .get_mut(&data.get_original_player_identifier())
+                                    {
+                                        //
+                                        if data.socket_type == SocketType::Tcp {
+                                            println!("poggers?");
+                                            if let Err(e) =
+                                                local_connection.stream.write(&data.data)
+                                            {
+                                                match e.kind() {
+                                                    std::io::ErrorKind::WouldBlock => {
+                                                        // nothing to do...
+                                                    }
+                                                    _ => {
+                                                        println!(
+                                                            "LOCAL TCP SOCKET SEND ERROR: {}",
+                                                            e
+                                                        );
+                                                    }
                                                 }
-                                                _ => {
-                                                    println!("LOCAL TCP SOCKET SEND ERROR: {}", e);
+                                            }
+                                        } else {
+                                            println!("TCP CONNECTIONS CAN ONLY SEND TCP DATA!");
+                                        }
+                                    }
+                                } else {
+                                    // Client logic
+                                    println!("CLIENT");
+                                    // let locked_connections = connections.data.lock().unwrap();
+                                    print_connections(&connections);
+                                    let locked = connections.data.lock().unwrap();
+                                    if let Some(player) = locked.get(&data.receiver_port) {
+                                        match player.stream.write(&data.data[..]) {
+                                            Ok(_) => {
+                                                // nothing to do, we sent the data!
+                                            }
+                                            Err(e) => {
+                                                match e.kind() {
+                                                    ErrorKind::WouldBlock => {
+                                                        //
+                                                    }
+                                                    _ => {
+                                                        println!("ERROR WHEN SENDING A TCP PACKET!")
+                                                    }
                                                 }
                                             }
                                         }
                                     } else {
-                                        println!("TCP CONNECTIONS CAN ONLY SEND TCP DATA!");
+                                        println!("Packed received for a non existing socket!");
                                     }
                                 }
                             }
@@ -511,10 +596,10 @@ fn connect(
         }
     });
 
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
+    let listener = TcpListener::bind(format!("127.0.0.1:{}", player_client_port)).unwrap();
     accept_connections(
         &listener,
-        Some((format!("0.0.0.0:{}", port), udp_packet_sender)),
+        Some((format!("0.0.0.0:{}", player_client_port), udp_packet_sender)),
         Some(relay_packet_receiver),
         connections,
     );
@@ -524,6 +609,8 @@ fn connect(
 fn ping(port: u16, address: String, udp: SocketType) {
     println!("Pinging {} as {:?}", address, udp);
     // Outgoing stream
+
+    let mut buf = [0u8; BUFFER_SIZE];
 
     match udp {
         SocketType::Udp => {
@@ -550,6 +637,10 @@ fn ping(port: u16, address: String, udp: SocketType) {
                 let _ = stream.write(&[1, 2, 3, 5, 7, 11, 13]);
                 o += 1;
                 println!("{}", o);
+
+                if let Ok(data_size) = stream.read(&mut buf) {
+                    println!("Received back data of size: {data_size}");
+                }
             }
         }
     }
@@ -571,7 +662,7 @@ fn listen(port: u16, udp: SocketType) {
                     println!("Received data of size {} from address {}", data.len(), addr);
 
                     counter += 1;
-                    if counter % 7 == 3 {
+                    if counter % 3 == 1 {
                         println!("Pinging back on the same tcp connection...");
                         let _sent = socket.send_to(&data, addr); // TODO: handle this gracefully
                     }
@@ -594,7 +685,7 @@ fn listen(port: u16, udp: SocketType) {
                             port
                         );
                         counter += 1;
-                        if counter % 7 == 3 {
+                        if counter % 4 == 2 {
                             println!("Pinging back on the same tcp connection...");
                             let _sent = stream.write(&data); // TODO: handle this gracefully
                         }

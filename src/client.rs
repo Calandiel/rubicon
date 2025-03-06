@@ -19,8 +19,8 @@ pub struct ClientState {
     pub other_player_name: String,
     pub other_player_port: u16,
 
-    /// A hashset mapping played identifiers to their local connections
-    pub player_redirection_table: HashMap<String, ClientLocalConnection>,
+    /// A hashset mapping identifiers to their local connections
+    pub local_redirection_table: HashMap<String, ClientLocalConnection>,
 }
 impl ClientState {
     pub fn new(
@@ -35,7 +35,7 @@ impl ClientState {
             player_port,
             other_player_name,
             other_player_port,
-            player_redirection_table: Default::default(),
+            local_redirection_table: Default::default(),
         }
     }
 
