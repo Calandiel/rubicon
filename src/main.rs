@@ -684,25 +684,32 @@ fn ping(port: u16, address: String, udp: SocketType, data_size: usize) {
             udp.set_nonblocking(true).unwrap();
 
             let mut o = 0;
+            let mut sent_out = 0;
+            let mut received = 0;
             loop {
-                std::thread::sleep(Duration::from_millis(500));
+                // std::thread::sleep(Duration::from_millis(500));
                 let _ = udp.send_to(&buffer_to_send, address.clone());
+                sent_out += 1;
                 o += 1;
                 println!("{}", o);
 
                 if let Ok((data_size, addr)) = udp.recv_from(&mut buf) {
                     println!("Received back data of size: {data_size}, from {addr}");
+                    received += 1;
                 }
+
+                println!("SENT: {}   VS   RECEIVED: {}", sent_out, received)
             }
         }
         SocketType::Tcp => {
             let mut stream = TcpStream::connect(address).unwrap();
-            stream.set_nonblocking(true).unwrap();
+            // stream.set_nonblocking(true).unwrap();
             stream.set_nodelay(DISABLE_NAGLE_ALGORITHM).unwrap();
 
             let mut o = 0;
             loop {
                 std::thread::sleep(Duration::from_millis(500));
+                let time = std::time::Instant::now();
                 let _ = stream.write(&buffer_to_send);
                 o += 1;
                 println!("{}", o);
@@ -710,6 +717,7 @@ fn ping(port: u16, address: String, udp: SocketType, data_size: usize) {
                 if let Ok(data_size) = stream.read(&mut buf) {
                     println!("Received back data of size: {data_size}");
                 }
+                println!("PING: {}", time.elapsed().as_millis());
             }
         }
     }
@@ -757,14 +765,14 @@ fn listen(port: u16, udp: SocketType) {
 
                         let counter = counters.entry(stream.get_tcp_addr().unwrap()).or_default();
                         *counter += 1;
-                        if *counter % 4 == 2 {
-                            println!(
-                                "Pinging back on the same tcp connection -> {:?} @ {}",
-                                stream.get_tcp_addr(),
-                                data.len()
-                            );
-                            let _sent = stream.write(&data); // TODO: handle this gracefully
-                        }
+                        // if *counter % 4 == 2 {
+                        println!(
+                            "Pinging back on the same tcp connection -> {:?} @ {}",
+                            stream.get_tcp_addr(),
+                            data.len()
+                        );
+                        let _sent = stream.write(&data); // TODO: handle this gracefully
+                                                         // }
                     }
                 }
             });

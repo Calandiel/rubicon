@@ -39,6 +39,8 @@ pub fn accept_connections(
                 let mut had_one = false;
 
                 {
+                    // Loop until we empty the queue
+                    // loop {
                     if let Ok((size, addr)) = udp.recv_from(&mut buffer) {
                         had_one = true;
                         // println!("Received udp traffic of size {} from {}", size, addr);
@@ -49,12 +51,21 @@ pub fn accept_connections(
                         server_relay
                             .send((addr.port(), buffer[..size].to_vec()))
                             .unwrap();
+                    } else {
+                        // break;
                     }
-
-                    if let Ok((addr, data)) = relay_packets_receiver.as_ref().unwrap().try_recv() {
-                        had_one = true;
-                        println!("RELAYING UDP DATA TO :: -> {} @ {}", addr, data.len());
-                        udp.send_to(&data, addr).unwrap();
+                    // }
+                    // Loop until we empty the queue
+                    loop {
+                        if let Ok((addr, data)) =
+                            relay_packets_receiver.as_ref().unwrap().try_recv()
+                        {
+                            had_one = true;
+                            println!("RELAYING UDP DATA TO :: -> {} @ {}", addr, data.len());
+                            udp.send_to(&data, addr).unwrap();
+                        } else {
+                            break;
+                        }
                     }
                 }
 
