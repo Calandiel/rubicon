@@ -18,15 +18,12 @@ pub trait ToConnections {
     fn to_connections(&mut self) -> &mut Connections;
 }
 
-pub fn accept_connections(
-    tcp_listener: &TcpListener,
+pub fn handle_udp_traffic(
     mut udp_address_and_server_relay: Option<(String, std::sync::mpsc::Sender<(u16, Vec<u8>)>)>,
     relay_packets_receiver: Option<std::sync::mpsc::Receiver<(String, Vec<u8>)>>,
-    connections: Connections,
     udp_queue_size: Option<Arc<Mutex<u64>>>,
     relay_queue_size: Option<Arc<Mutex<u64>>>,
-) -> ! {
-    // let connections_cloned = connections.clone();
+) {
     std::thread::spawn(move || {
         // let connections = connections_cloned;
         if let Some((addr, server_relay)) = &mut udp_address_and_server_relay {
@@ -97,7 +94,9 @@ pub fn accept_connections(
             }
         }
     });
+}
 
+pub fn accept_connections(tcp_listener: &TcpListener, connections: Connections) -> ! {
     loop {
         let begin = Instant::now();
 

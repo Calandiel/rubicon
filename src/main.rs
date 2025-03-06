@@ -18,8 +18,8 @@ use clap::Parser;
 use client::ClientState;
 use commands::{Args, Commands, SocketType};
 use common::{
-    accept_connections, handle_connections, BUFFER_SIZE, DISABLE_NAGLE_ALGORITHM, MAX_QUEUE_SIZE,
-    MINIMUM_TICK_RATE_IN_MS,
+    accept_connections, handle_connections, handle_udp_traffic, BUFFER_SIZE,
+    DISABLE_NAGLE_ALGORITHM, MAX_QUEUE_SIZE, MINIMUM_TICK_RATE_IN_MS,
 };
 use connections::Connections;
 use packet::{print_packet, process_packets, CommandPacket, DataPacket, GreetingPacket, Packet};
@@ -170,7 +170,7 @@ fn host(port: u16) {
     }
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-    accept_connections(&listener, None, None, connections, None, None);
+    accept_connections(&listener, connections);
 }
 
 fn relay_packets(server: &mut ServerState, packets: &mut Vec<(u16, DataPacket)>) {
@@ -682,14 +682,13 @@ fn connect(
     });
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}", player_client_port)).unwrap();
-    accept_connections(
-        &listener,
+    handle_udp_traffic(
         Some((format!("0.0.0.0:{}", player_client_port), udp_packet_sender)),
         Some(relay_packet_receiver),
-        connections,
         Some(udp_packet_queue_size_cloned),
         Some(relay_queue_size_cloned),
     );
+    accept_connections(&listener, connections);
 }
 
 /// Connects to an address and starts sending tcp packets to it.
@@ -806,7 +805,7 @@ fn listen(port: u16, udp: SocketType) {
             });
 
             let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-            accept_connections(&listener, None, None, connections, None, None);
+            accept_connections(&listener, connections);
         }
     }
 }
