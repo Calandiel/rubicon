@@ -7,27 +7,23 @@ pub mod server;
 pub mod socket;
 
 use std::{
-    collections::HashSet,
     io::{ErrorKind, Read, Write},
     net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
-    str::FromStr,
     sync::mpsc::channel,
     time::{Duration, Instant},
     u8,
 };
 
-use bincode::deserialize;
 use clap::Parser;
-use client::{ClientLocalConnection, ClientState};
+use client::ClientState;
 use commands::{Args, Commands, SocketType};
 use common::{
     accept_connections, handle_connections, print_connections, BUFFER_SIZE,
     DISABLE_NAGLE_ALGORITHM, MINIMUM_TICK_RATE_IN_MS,
 };
-use connections::{Connections, PlayerData};
+use connections::Connections;
 use packet::{print_packet, process_packets, CommandPacket, DataPacket, GreetingPacket, Packet};
 use server::ServerState;
-use socket::SocketWrapper;
 
 fn main() {
     let args = Args::parse();
@@ -261,6 +257,7 @@ fn connect(
 
     // let relay_server_address = relay_server_address.clone();
     handle_connections(client, move |client, buffer, _had_one| {
+        /*
         let peers: HashSet<u16> = client
             .connections
             .data
@@ -269,6 +266,7 @@ fn connect(
             .iter()
             .map(|(k, _)| *k)
             .collect();
+        */
         let mut packets = vec![]; // Packets to pass
         let mut disconnected = vec![]; // Disconnected peers
         let mut commands = vec![]; // Ignored by clients
@@ -331,64 +329,94 @@ fn connect(
         // Remember to also relay UDP!
         while let Ok((udp_port, data)) = udp_packet_receiver.try_recv() {
             // println!("Relaying a udp packet of size {} to the server", data.len());
+            //
+            if client.is_host() {
+                // We're the host!
+                // We need to parse the packet to check if it's a data packet.
+                // If it is, we need to ensure we have the udp socket existing
+                if let Ok(packet) = bincode::deserialize::<Packet>(&data) {
+                    // Data packet
+                    if let Packet::Data(data_packet) = packet {
+                        data_packet.print("DATA PACKET: ");
+                        client.ensure_udp_socket_on_redirection_table(&data_packet);
 
-            let (other_player_name, other_player_port, source_port) = if client.is_host() {
-                let player_identifier = format!("{}:{}", other_player_name, other_player_port);
-                println!("IDENTIFIER: {}", player_identifier);
-                if let Some(local_client_connection) =
-                    client.local_redirection_table.get(&player_identifier)
-                {
-                    let (player_name, _player_port, source_port) = (
-                        local_client_connection.player_name.clone(),
-                        local_client_connection.port,
-                        local_client_connection.original_socket_port,
-                    );
-                    // println!("redirection table contains an entry for the udp port {udp_port}");
-                    (player_name, source_port.clone(), source_port.clone())
+                        let player_identifier = data_packet.get_original_player_identifier();
+                        println!("IDENTIFIER: {}", player_identifier);
+                        // client.ensure_udp_socket_on_redirection_table(data);
+                        if let Some(local_client_connection) =
+                            client.local_redirection_table.get(&player_identifier)
+                        {
+                            println!("RELAYING TO: 127.0.0.1:{}", data_packet.receiver_port);
+                            let udp = local_client_connection.udp_socket.as_ref().unwrap();
+                            udp.send_to(
+                                &data_packet.data,
+                                format!("127.0.0.1:{}", data_packet.receiver_port),
+                            )
+                            .unwrap();
+                            // let (player_name, _player_port, source_port) = (
+                            // local_client_connection.player_name.clone(),
+                            // local_client_connection.port,
+                            // local_client_connection.original_socket_port,
+                            // );
+                            // println!("redirection table contains an entry for the udp port {udp_port}");
+                            // (player_name, source_port.clone(), source_port.clone());
+                        } else {
+                            panic!("redirection table DOESNT contain an entry for the udp port {udp_port}");
+                        }
+                    } else {
+                        // Not a data packet, its some other packet type
+                        panic!("NOT A DATA PACKET!");
+                    }
                 } else {
-                    panic!("redirection table DOESNT contain an entry for the udp port {udp_port}");
-                    // TODO: should we really panic?
-                    // (
-                    // client.other_player_name.clone(),
-                    // client.other_player_port.clone(),
-                    // udp_port,
-                    // )
+                    // Not a data packet, instead, its unstructured information
+                    panic!("UNSTRUCTURED DATA!");
                 }
+
+            /*
+            let player_identifier = data.get_original_player_identifier();
+            println!("IDENTIFIER: {}", player_identifier);
+            // client.ensure_udp_socket_on_redirection_table(data);
+            if let Some(local_client_connection) =
+                client.local_redirection_table.get(&player_identifier)
+            {
+                let (player_name, _player_port, source_port) = (
+                    local_client_connection.player_name.clone(),
+                    local_client_connection.port,
+                    local_client_connection.original_socket_port,
+                );
+                // println!("redirection table contains an entry for the udp port {udp_port}");
+                (player_name, source_port.clone(), source_port.clone())
             } else {
-                (
-                    client.other_player_name.clone(),
-                    client.other_player_port.clone(),
-                    udp_port,
-                )
+                panic!("redirection table DOESNT contain an entry for the udp port {udp_port}");
+                // TODO: should we really panic?
+                // (
+                // client.other_player_name.clone(),
+                // client.other_player_port.clone(),
+                // udp_port,
+                // )
+            }
+            */
+            } else {
+                let data_packet = DataPacket {
+                    socket_type: SocketType::Udp,
+                    sender_name: client.player_name.clone(),
+                    sender_port: client.player_port,
+                    receiver_name: client.other_player_name.clone(),
+                    receiver_port: client.other_player_port,
+                    data,
+                    source_port: udp_port, // TODO: fix this? If it's even an issue, kekw
+                };
+                data_packet.print("");
+                relay_packet_sender
+                    .send((
+                        relay_server_address.clone(),
+                        bincode::serialize(&Packet::Data(data_packet)).unwrap(),
+                    ))
+                    .unwrap();
             };
             // println!("UDP relay through server for {other_player_name}:{other_player_port} ({source_port}) @ {}", data.len());
-            print_packet(
-                "",
-                "self".to_string(),
-                source_port,
-                source_port,
-                SocketType::Udp,
-                other_player_name.clone(),
-                other_player_port,
-                data.len(),
-            );
             // using udp
             //*
-            relay_packet_sender
-                .send((
-                    relay_server_address.clone(),
-                    bincode::serialize(&Packet::Data(DataPacket {
-                        socket_type: SocketType::Udp,
-                        sender_name: client.player_name.clone(),
-                        sender_port: client.player_port,
-                        receiver_name: other_player_name,
-                        receiver_port: other_player_port,
-                        data,
-                        source_port, // TODO: fix this? If it's even an issue, kekw
-                    }))
-                    .unwrap(),
-                ))
-                .unwrap();
             // */
             /*
             // using tcp
@@ -424,53 +452,57 @@ fn connect(
             // local_connection.port,
             // local_connection.original_socket_port
             // );
-            if let Ok(size) = local_connection.stream.as_ref().unwrap().read(buffer) {
-                let data = &buffer[..size];
+            if local_connection.stream.is_some() {
+                if let Ok(size) = local_connection.stream.as_ref().unwrap().read(buffer) {
+                    let data = &buffer[..size];
 
-                // Check if the data is structured.
-                if let Ok(_r) = bincode::deserialize::<Packet>(data) {
-                    // Structured data, shouldnt happen...
-                    println!("Received structured data on a local client socket! This should not happen!");
-                } else {
-                    // Unstructured data
-                    // Needs to be relayed to the server...
-                    let packet = DataPacket {
-                        socket_type: SocketType::Tcp,
-                        sender_name: client.player_name.clone(),
-                        sender_port: client.player_port,
-                        receiver_name: local_connection.player_name.clone(),
-                        receiver_port: local_connection.original_socket_port,
-                        data: data.to_vec(),
-                        source_port: local_connection
-                            .stream
-                            .as_ref()
-                            .unwrap()
-                            .peer_addr()
-                            .unwrap()
-                            .port(),
-                    };
-                    packet.print("SENDING TO THE SERVER: ");
-                    let data_packet = Packet::Data(packet);
-                    if let Err(e) =
-                        local_outgoing_stream.write(&bincode::serialize(&data_packet).unwrap())
-                    {
-                        match e.kind() {
-                            ErrorKind::WouldBlock => {
-                                //
-                            }
-                            _ => {
-                                println!(
-                                    "Failed to relay unstructured data for {}:{} ({})",
-                                    local_connection.player_name,
-                                    local_connection.port,
-                                    local_connection.original_socket_port
-                                )
+                    // Check if the data is structured.
+                    if let Ok(_r) = bincode::deserialize::<Packet>(data) {
+                        // Structured data, shouldnt happen...
+                        println!("Received structured data on a local client socket! This should not happen!");
+                    } else {
+                        // Unstructured data
+                        // Needs to be relayed to the server...
+                        let packet = DataPacket {
+                            socket_type: SocketType::Tcp,
+                            sender_name: client.player_name.clone(),
+                            sender_port: client.player_port,
+                            receiver_name: local_connection.player_name.clone(),
+                            receiver_port: local_connection.original_socket_port,
+                            data: data.to_vec(),
+                            source_port: local_connection
+                                .stream
+                                .as_ref()
+                                .unwrap()
+                                .peer_addr()
+                                .unwrap()
+                                .port(),
+                        };
+                        packet.print("SENDING TO THE SERVER: ");
+                        let data_packet = Packet::Data(packet);
+                        if let Err(e) =
+                            local_outgoing_stream.write(&bincode::serialize(&data_packet).unwrap())
+                        {
+                            match e.kind() {
+                                ErrorKind::WouldBlock => {
+                                    //
+                                }
+                                _ => {
+                                    println!(
+                                        "Failed to relay unstructured data for {}:{} ({})",
+                                        local_connection.player_name,
+                                        local_connection.port,
+                                        local_connection.original_socket_port
+                                    )
+                                }
                             }
                         }
                     }
+                } else {
+                    // Failed to read
                 }
             } else {
-                // Failed to read
+                // No tcp stream
             }
         }
         // Receive data from the server and relay it to local connections
@@ -483,16 +515,16 @@ fn connect(
                 if let Ok(value) = bincode::deserialize::<Packet>(&received_data) {
                     match value {
                         Packet::Data(data) => {
-                            let socket_type = data.socket_type;
+                            // let socket_type = data.socket_type;
                             data.print("packet received from the server: ");
                             if client.player_name != data.receiver_name {
                                 // println!("Received data meant for another player! Weird!");
                             } else {
-                                let receiver_port = data.receiver_port;
-                                let address = SocketAddr::from_str(
-                                    format!("127.0.0.1:{}", receiver_port).as_str(),
-                                )
-                                .unwrap();
+                                // let receiver_port = data.receiver_port;
+                                // let address = SocketAddr::from_str(
+                                // format!("127.0.0.1:{}", receiver_port).as_str(),
+                                // )
+                                // .unwrap();
 
                                 // Create the socket if it doesn't exist yet
                                 if client.is_host() {

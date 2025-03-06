@@ -45,7 +45,7 @@ pub fn accept_connections(
                         // Welp, gotta send it next!
                         // But... where to?
                         // This could be a server setup ;-;
-                        // println!("RECEIVED LOCAL UDP :: {} @ {}", addr, size);
+                        println!("RECEIVED UDP :: {} @ {}", addr, size);
                         server_relay
                             .send((addr.port(), buffer[..size].to_vec()))
                             .unwrap();
@@ -53,7 +53,7 @@ pub fn accept_connections(
 
                     if let Ok((addr, data)) = relay_packets_receiver.as_ref().unwrap().try_recv() {
                         had_one = true;
-                        println!("RELAYING DATA TO :: -> {} @ {}", addr, data.len());
+                        println!("RELAYING UDP DATA TO :: -> {} @ {}", addr, data.len());
                         udp.send_to(&data, addr).unwrap();
                     }
                 }
