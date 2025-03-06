@@ -46,30 +46,30 @@ pub fn handle_udp_traffic(
 
                 {
                     // Loop until we empty the queue
-                    loop {
-                        if let Ok((size, addr)) = udp.recv_from(&mut buffer) {
-                            had_one = true;
+                    // loop {
+                    if let Ok((size, addr)) = udp.recv_from(&mut buffer) {
+                        had_one = true;
 
-                            if *udp_queue_size.lock().unwrap() < MAX_QUEUE_SIZE {
-                                // println!("Received udp traffic of size {} from {}", size, addr);
-                                // Welp, gotta send it next!
-                                // But... where to?
-                                // This could be a server setup ;-;
-                                // println!("RECEIVED UDP :: {} @ {}", addr, size);
-                                server_relay
-                                    .send((addr.port(), buffer[..size].to_vec()))
-                                    .unwrap();
-                                *udp_queue_size.lock().unwrap() += 1;
+                        if *udp_queue_size.lock().unwrap() < MAX_QUEUE_SIZE {
+                            // println!("Received udp traffic of size {} from {}", size, addr);
+                            // Welp, gotta send it next!
+                            // But... where to?
+                            // This could be a server setup ;-;
+                            // println!("RECEIVED UDP :: {} @ {}", addr, size);
+                            server_relay
+                                .send((addr.port(), buffer[..size].to_vec()))
+                                .unwrap();
+                            *udp_queue_size.lock().unwrap() += 1;
 
-                                received_packets += 1;
-                                println!("RECEIVED UDP PACKETS: {}", received_packets);
-                            } else {
-                                println!("QUEUE OVER CAPACITY! DROPPING A UDP PACKET...");
-                            }
+                            received_packets += 1;
+                            // println!("RECEIVED UDP PACKETS: {}", received_packets);
                         } else {
-                            break;
+                            println!("QUEUE OVER CAPACITY! DROPPING A UDP PACKET...");
                         }
+                    } else {
+                        // break;
                     }
+                    // }
                     // Loop until we empty the queue
                     // loop {
                     if let Ok((addr, data)) = relay_packets_receiver.as_ref().unwrap().try_recv() {
@@ -79,7 +79,7 @@ pub fn handle_udp_traffic(
                         // println!("RELAYING UDP DATA TO :: -> {} @ {}", addr, data.len());
                         udp.send_to(&data, addr).unwrap();
                         sent_packets += 1;
-                        println!("SENT UDP PACKETS: {}", sent_packets);
+                        // println!("SENT UDP PACKETS: {}", sent_packets);
                     } else {
                         // break;
                     }

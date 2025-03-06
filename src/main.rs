@@ -267,8 +267,12 @@ fn connect(
     );
     let connections = client.connections.clone();
 
+    let mut last_tick = std::time::Instant::now();
     // let relay_server_address = relay_server_address.clone();
-    handle_connections(client, move |client, buffer, _had_one| {
+    handle_connections(client, move |client, buffer, had_one| {
+        println!("ELAPSED: {}ms", last_tick.elapsed().as_millis());
+        last_tick = std::time::Instant::now();
+
         /*
         let peers: HashSet<u16> = client
             .connections
@@ -306,7 +310,7 @@ fn connect(
         // We will re-route them to the server.
         for (receiver_name, receiver_port, packet, source_port) in rejected_packets {
             print_packet(
-                "local :: ",
+                "local reject :: ",
                 "self".to_string(),
                 source_port,
                 source_port,
@@ -339,6 +343,7 @@ fn connect(
                 .unwrap(); // TODO: verify that this is OK
         }
         // Remember to also relay UDP!
+        /*
         if *udp_packet_queue_size.lock().unwrap() > 0 || *relay_queue_size.lock().unwrap() > 0 {
             println!(
                 "UDP PACKETS TO SEND TO A LOCAL ADDRESS: {:?}",
@@ -349,6 +354,7 @@ fn connect(
                 relay_queue_size.lock().unwrap()
             );
         }
+        */
         while let Ok((udp_port, data)) = udp_packet_receiver.try_recv() {
             *udp_packet_queue_size.lock().unwrap() -= 1;
             // println!("Relaying a udp packet of size {} to the server", data.len());
@@ -364,12 +370,12 @@ fn connect(
                         client.ensure_udp_socket_on_redirection_table(&data_packet);
 
                         let player_identifier = data_packet.get_original_player_identifier();
-                        println!("IDENTIFIER: {}", player_identifier);
+                        // println!("IDENTIFIER: {}", player_identifier);
                         // client.ensure_udp_socket_on_redirection_table(data);
                         if let Some(local_client_connection) =
                             client.local_redirection_table.get(&player_identifier)
                         {
-                            println!("RELAYING TO: 127.0.0.1:{}", data_packet.receiver_port);
+                            // println!("RELAYING TO: 127.0.0.1:{}", data_packet.receiver_port);
                             local_client_connection
                                 .udp_socket
                                 .as_ref()
@@ -500,6 +506,8 @@ fn connect(
             // );
             if local_connection.stream.is_some() {
                 if let Ok(size) = local_connection.stream.as_ref().unwrap().read(buffer) {
+                    *had_one = true;
+
                     let data = &buffer[..size];
 
                     // Check if the data is structured.
@@ -557,6 +565,8 @@ fn connect(
                     .unwrap()
                     .recv_from(buffer)
                 {
+                    *had_one = true;
+
                     local_connection.received_udp_packets_counts += 1;
                     // println!(
                     // "RECEIVED UDP PACKETS: {}",
