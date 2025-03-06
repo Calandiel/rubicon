@@ -459,7 +459,7 @@ fn connect(
                     // Check if the data is structured.
                     if let Ok(_r) = bincode::deserialize::<Packet>(data) {
                         // Structured data, shouldnt happen...
-                        println!("Received structured data on a local client socket! This should not happen!");
+                        println!("Received structured data on a local client tcp socket! This should not happen!");
                     } else {
                         // Unstructured data
                         // Needs to be relayed to the server...
@@ -503,6 +503,38 @@ fn connect(
                 }
             } else {
                 // No tcp stream
+            }
+            if local_connection.udp_socket.is_some() {
+                if let Ok((size, addr)) = local_connection
+                    .udp_socket
+                    .as_ref()
+                    .unwrap()
+                    .recv_from(buffer)
+                {
+                    // If we receive data, it means we need to relay it to the server!
+                    let data = &buffer[..size];
+
+                    // Check if the data is structured.
+                    if let Ok(_r) = bincode::deserialize::<Packet>(data) {
+                        // Structured data, shouldnt happen...
+                        println!("Received structured data on a local client udp socket! This should not happen!");
+                    } else {
+                        let data = bincode::serialize(&Packet::Data(DataPacket {
+                            socket_type: todo!(),
+                            sender_name: todo!(),
+                            sender_port: todo!(),
+                            receiver_name: todo!(),
+                            receiver_port: todo!(),
+                            data: data.to_vec(),
+                            source_port: addr.port(),
+                        }));
+                        relay_packet_sender
+                            .send((relay_server_address.clone(), vec![]))
+                            .unwrap();
+                    }
+                }
+            } else {
+                // No udp stream
             }
         }
         // Receive data from the server and relay it to local connections
