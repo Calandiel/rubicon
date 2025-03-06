@@ -104,7 +104,7 @@ fn host(port: u16) {
     });
 
     let udp_socket = UdpSocket::bind(format!("0.0.0.0:{}", port)).unwrap();
-    udp_socket.set_nonblocking(true).unwrap();
+    // udp_socket.set_nonblocking(true).unwrap();
     {
         let connections = connections.clone();
         std::thread::spawn(move || {
