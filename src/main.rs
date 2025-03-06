@@ -397,22 +397,36 @@ fn connect(
             }
             */
             } else {
-                let data_packet = DataPacket {
-                    socket_type: SocketType::Udp,
-                    sender_name: client.player_name.clone(),
-                    sender_port: client.player_port,
-                    receiver_name: client.other_player_name.clone(),
-                    receiver_port: client.other_player_port,
-                    data,
-                    source_port: udp_port, // TODO: fix this? If it's even an issue, kekw
-                };
-                data_packet.print("");
-                relay_packet_sender
-                    .send((
-                        relay_server_address.clone(),
-                        bincode::serialize(&Packet::Data(data_packet)).unwrap(),
-                    ))
-                    .unwrap();
+                if let Ok(packet) = bincode::deserialize::<Packet>(&data) {
+                    // Data packet
+                    if let Packet::Data(data_packet) = packet {
+                        data_packet.print("RECEIVED FOR RELAY");
+
+                        relay_packet_sender
+                            .send((
+                                format!("127.0.0.1:{}", data_packet.receiver_port),
+                                data_packet.data,
+                            ))
+                            .unwrap();
+                    }
+                } else {
+                    let data_packet = DataPacket {
+                        socket_type: SocketType::Udp,
+                        sender_name: client.player_name.clone(),
+                        sender_port: client.player_port,
+                        receiver_name: client.other_player_name.clone(),
+                        receiver_port: client.other_player_port,
+                        data,
+                        source_port: udp_port, // TODO: fix this? If it's even an issue, kekw
+                    };
+                    data_packet.print("RELAYING TO SERVER");
+                    relay_packet_sender
+                        .send((
+                            relay_server_address.clone(),
+                            bincode::serialize(&Packet::Data(data_packet)).unwrap(),
+                        ))
+                        .unwrap();
+                }
             };
             // println!("UDP relay through server for {other_player_name}:{other_player_port} ({source_port}) @ {}", data.len());
             // using udp
@@ -519,17 +533,18 @@ fn connect(
                         // Structured data, shouldnt happen...
                         println!("Received structured data on a local client udp socket! This should not happen!");
                     } else {
-                        let data = bincode::serialize(&Packet::Data(DataPacket {
-                            socket_type: todo!(),
-                            sender_name: todo!(),
-                            sender_port: todo!(),
-                            receiver_name: todo!(),
-                            receiver_port: todo!(),
+                        let data_vec = bincode::serialize(&Packet::Data(DataPacket {
+                            socket_type: SocketType::Udp,
+                            sender_name: client.player_name.clone(),
+                            sender_port: client.player_port,
+                            receiver_name: local_connection.player_name.clone(),
+                            receiver_port: local_connection.original_socket_port,
                             data: data.to_vec(),
                             source_port: addr.port(),
-                        }));
+                        }))
+                        .unwrap();
                         relay_packet_sender
-                            .send((relay_server_address.clone(), vec![]))
+                            .send((relay_server_address.clone(), data_vec))
                             .unwrap();
                     }
                 }
@@ -666,6 +681,7 @@ fn ping(port: u16, address: String, udp: SocketType, data_size: usize) {
             //
             println!("Binding a udp socket on 0.0.0.0:{port}");
             let udp = UdpSocket::bind(format!("0.0.0.0:{port}")).unwrap();
+            udp.set_nonblocking(true).unwrap();
 
             let mut o = 0;
             loop {
@@ -673,6 +689,10 @@ fn ping(port: u16, address: String, udp: SocketType, data_size: usize) {
                 let _ = udp.send_to(&buffer_to_send, address.clone());
                 o += 1;
                 println!("{}", o);
+
+                if let Ok((data_size, addr)) = udp.recv_from(&mut buf) {
+                    println!("Received back data of size: {data_size}, from {addr}");
+                }
             }
         }
         SocketType::Tcp => {
