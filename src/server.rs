@@ -39,7 +39,7 @@ impl ServerState {
         for (port, greeting) in greetings {
             if let Some(_) = cons.get(&port) {
                 println!("NEW PLAYER: {}:{}", greeting.player_name, port);
-                if !cons.update_player_name(port, greeting.player_name) {
+                if !cons.update_player_from_greeting(port, &greeting) {
                     println!("Removing the impostor player...");
                     cons.remove(&port);
                 }

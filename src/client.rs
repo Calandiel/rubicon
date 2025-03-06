@@ -1,9 +1,16 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, net::TcpStream};
 
 use crate::{
     common::{print_connections, ToConnections},
     connections::Connections,
 };
+
+pub struct ClientLocalConnection {
+    pub player_name: String,
+    pub port: u16,
+    pub original_socket_port: u16,
+    pub stream: TcpStream,
+}
 
 pub struct ClientState {
     pub connections: Connections,
@@ -12,8 +19,8 @@ pub struct ClientState {
     pub other_player_name: String,
     pub other_player_port: u16,
 
-    /// A hashset mapping LOCAL ports to outside ports (PLAYERNAME, PLAYERPORT, ORIGINALTCPSOCKETPORT)
-    pub player_redirection_table: HashMap<u16, (String, u16, u16)>,
+    /// A hashset mapping played identifiers to their local connections
+    pub player_redirection_table: HashMap<String, ClientLocalConnection>,
 }
 impl ClientState {
     pub fn new(

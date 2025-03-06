@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{commands::SocketType, connections::Connections};
+use crate::{client::ClientLocalConnection, commands::SocketType, connections::Connections};
 
 #[derive(Serialize, Deserialize)]
 pub enum Packet {
@@ -27,8 +27,17 @@ pub struct DataPacket {
     pub source_port: u16,
 }
 impl DataPacket {
-    pub fn print(&self) {
+    pub fn get_player_identifier(&self) -> String {
+        format!("{}:{}", self.sender_name, self.sender_port)
+    }
+
+    pub fn get_original_player_identifier(&self) -> String {
+        format!("{}:{}", self.sender_name, self.source_port)
+    }
+
+    pub fn print(&self, prefix: &str) {
         print_packet(
+            prefix,
             self.sender_name.clone(),
             self.sender_port,
             self.source_port,
@@ -41,6 +50,7 @@ impl DataPacket {
 }
 
 pub fn print_packet(
+    prefix: &str,
     sender_name: String,
     sender_port: u16,
     source_port: u16,
@@ -50,8 +60,15 @@ pub fn print_packet(
     data_len: usize,
 ) {
     println!(
-        "{}:{} ({}) --({:?})--> {}:{} @ {}",
-        sender_name, sender_port, source_port, socket_type, receiver_name, receiver_port, data_len
+        "{}{}:{} ({}) --({:?})--> {}:{} @ {}",
+        prefix,
+        sender_name,
+        sender_port,
+        source_port,
+        socket_type,
+        receiver_name,
+        receiver_port,
+        data_len
     )
 }
 
@@ -75,7 +92,7 @@ pub fn process_packets(
     is_host: bool,                                                   // ignored by servers
     default_receiver_name: String,
     default_receiver_port: u16,
-    redirection_table: &HashMap<u16, (String, u16, u16)>,
+    redirection_table: &HashMap<String, ClientLocalConnection>,
 ) {
     let mut locked_connections = connections.data.lock().unwrap();
     for (port, player_data) in locked_connections.iter_mut() {
@@ -114,7 +131,7 @@ pub fn process_packets(
                                     // data.socket_type == SocketType::Tcp,
                                     // "Tcp sockets should only receive tcp data!"
                                     // );
-                                    data.print();
+                                    data.print("received on a tcp socket :: ");
                                     if data.socket_type == SocketType::Udp {
                                         println!("Received a udp packet on a tcp relay!");
                                     }
@@ -142,18 +159,25 @@ pub fn process_packets(
                             if is_host {
                                 // If we're a host, we need to resolve the address ourselves
                                 // rejected_packets_buffers.push((default_receiver_name.clone(), default_receiver_port ,sliced_data.to_vec()));
-                                if let Some((receiver_name, receiver_port, tcp_port)) =
-                                    redirection_table.get(port)
+                                if let Some(local_client_connection) = redirection_table.get("derp")
                                 {
+                                    let (receiver_name, receiver_port, tcp_port) = (
+                                        local_client_connection.player_name.clone(),
+                                        local_client_connection.port,
+                                        local_client_connection.original_socket_port,
+                                    );
                                     rejected_packets_buffers.push((
-                                        receiver_name.clone(),
-                                        *receiver_port,
+                                        receiver_name,
+                                        receiver_port,
                                         sliced_data.to_vec(),
-                                        *tcp_port,
+                                        tcp_port,
                                     ));
                                     // println!("Retrieved receiver name and port. Message scheduled for transmission.");
                                 } else {
-                                    // println!("Retrieval of receivers name failed on port: {}", *port)
+                                    println!(
+                                        "Retrieval of receivers name failed on port: {}",
+                                        *port
+                                    )
                                 }
                             } else {
                                 // If we're not a host, just target the default receiver.

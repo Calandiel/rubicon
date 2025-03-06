@@ -87,6 +87,7 @@ pub fn accept_connections(
                         name: "<missing>".to_string(),
                         address: peer,
                         stream: SocketWrapper::from_tcp_socket(tcp_stream),
+                        local_port: None,
                     },
                 );
             }

@@ -9,13 +9,16 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{common::ToConnections, socket::SocketWrapper};
+use crate::{common::ToConnections, packet::GreetingPacket, socket::SocketWrapper};
 
 #[derive(Debug)]
 pub struct PlayerData {
+    /// Address of the tcp socket that we bound for communicating with the player
     pub address: SocketAddr,
     pub stream: SocketWrapper,
     pub name: String,
+    /// Port the player uses itself, useful for sending udp packets to it!
+    pub local_port: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +37,17 @@ impl InnerConnections {
     // self.by_tcp_port.get_mut(k)
     // }
 
+    pub fn get_player_tcp_port_by_name(&self, name: &String) -> Option<u16> {
+        if let Some((port, _)) = self
+            .by_tcp_port
+            .iter()
+            .find(|(_, player)| &player.name == name)
+        {
+            return Some(*port);
+        }
+        None
+    }
+
     pub fn get_target_stream<'a>(&'a mut self, tcp_port: u16) -> Option<&'a mut SocketWrapper> {
         if let Some(v) = self.by_tcp_port.get_mut(&tcp_port) {
             return Some(&mut v.stream);
@@ -42,18 +56,23 @@ impl InnerConnections {
     }
 
     /// Returns whether the operation was a success. If it wasn't, it means we're dealing with a duplicate name!
-    pub fn update_player_name(&mut self, tcp_port: u16, new_name: String) -> bool {
+    pub fn update_player_from_greeting(
+        &mut self,
+        tcp_port: u16,
+        greeting: &GreetingPacket,
+    ) -> bool {
         let entry = self
             .by_tcp_port
             .iter()
-            .find(|(_, player)| player.name == new_name);
+            .find(|(_, player)| player.name == greeting.player_name);
         if let Some(_) = entry {
-            println!("DUPLICATE PLAYER NAME: {new_name}");
+            println!("DUPLICATE PLAYER NAME: {}", greeting.player_name);
             return false;
         }
 
         if let Some(player) = self.by_tcp_port.get_mut(&tcp_port) {
-            player.name = new_name;
+            player.name = greeting.player_name.clone();
+            player.local_port = Some(greeting.local_port);
         }
 
         true
