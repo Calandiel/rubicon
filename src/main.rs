@@ -13,6 +13,7 @@ use std::{
     str::FromStr,
     sync::mpsc::channel,
     time::{Duration, Instant},
+    u8,
 };
 
 use bincode::deserialize;
@@ -50,7 +51,8 @@ fn main() {
             port,
             address,
             socket,
-        } => ping(port, address, socket),
+            data_size,
+        } => ping(port, address, socket, data_size),
         Commands::Listen { port, socket } => listen(port, socket),
         Commands::Command { address, command } => send_command(address, command),
     }
@@ -413,7 +415,7 @@ fn connect(
                 panic!("SERVER TIMEOUT!");
             }
         }
-        // And from the clients connected...
+        // Receive packets from connected clients and send them to the server...
         for (_, local_connection) in client.local_redirection_table.iter_mut() {
             //
             // println!(
@@ -432,7 +434,7 @@ fn connect(
                 } else {
                     // Unstructured data
                     // Needs to be relayed to the server...
-                    let data_packet = Packet::Data(DataPacket {
+                    let packet = DataPacket {
                         socket_type: SocketType::Tcp,
                         sender_name: client.player_name.clone(),
                         sender_port: client.player_port,
@@ -440,7 +442,9 @@ fn connect(
                         receiver_port: local_connection.original_socket_port,
                         data: data.to_vec(),
                         source_port: local_connection.stream.peer_addr().unwrap().port(),
-                    });
+                    };
+                    packet.print("SENDING TO THE SERVER: ");
+                    let data_packet = Packet::Data(packet);
                     if let Err(e) =
                         local_outgoing_stream.write(&bincode::serialize(&data_packet).unwrap())
                     {
@@ -474,6 +478,7 @@ fn connect(
                     match value {
                         Packet::Data(data) => {
                             let socket_type = data.socket_type;
+                            data.print("packet received from the server: ");
                             if client.player_name != data.receiver_name {
                                 // println!("Received data meant for another player! Weird!");
                             } else {
@@ -482,8 +487,6 @@ fn connect(
                                     format!("127.0.0.1:{}", receiver_port).as_str(),
                                 )
                                 .unwrap();
-
-                                data.print("packet to be sent: ");
 
                                 // Create the socket if it doesn't exist yet
                                 if client.is_host() {
@@ -529,7 +532,6 @@ fn connect(
                                     {
                                         //
                                         if data.socket_type == SocketType::Tcp {
-                                            println!("poggers?");
                                             if let Err(e) =
                                                 local_connection.stream.write(&data.data)
                                             {
@@ -606,11 +608,17 @@ fn connect(
 }
 
 /// Connects to an address and starts sending tcp packets to it.
-fn ping(port: u16, address: String, udp: SocketType) {
+fn ping(port: u16, address: String, udp: SocketType, data_size: usize) {
     println!("Pinging {} as {:?}", address, udp);
     // Outgoing stream
 
     let mut buf = [0u8; BUFFER_SIZE];
+
+    let buffer_to_send = vec![0; data_size]
+        .iter()
+        .enumerate()
+        .map(|(i, _)| (i % u8::MAX as usize) as u8)
+        .collect::<Vec<u8>>();
 
     match udp {
         SocketType::Udp => {
@@ -621,7 +629,7 @@ fn ping(port: u16, address: String, udp: SocketType) {
             let mut o = 0;
             loop {
                 std::thread::sleep(Duration::from_millis(500));
-                let _ = udp.send_to(&[1, 2, 3, 5, 7, 11, 13], address.clone());
+                let _ = udp.send_to(&buffer_to_send, address.clone());
                 o += 1;
                 println!("{}", o);
             }
@@ -634,7 +642,7 @@ fn ping(port: u16, address: String, udp: SocketType) {
             let mut o = 0;
             loop {
                 std::thread::sleep(Duration::from_millis(500));
-                let _ = stream.write(&[1, 2, 3, 5, 7, 11, 13]);
+                let _ = stream.write(&buffer_to_send);
                 o += 1;
                 println!("{}", o);
 
@@ -655,14 +663,15 @@ fn listen(port: u16, udp: SocketType) {
             println!("Binding a udp socket on 0.0.0.0:{}", port);
             let socket = UdpSocket::bind(format!("0.0.0.0:{}", port).as_str()).unwrap();
             let mut buf = [0u8; BUFFER_SIZE];
-            let mut counter = 0;
+            let mut counters = std::collections::HashMap::<SocketAddr, i32>::new();
             loop {
                 if let Ok((size, addr)) = socket.recv_from(&mut buf) {
                     let data = buf[..size].to_vec();
                     println!("Received data of size {} from address {}", data.len(), addr);
 
-                    counter += 1;
-                    if counter % 3 == 1 {
+                    let counter = counters.entry(addr).or_default();
+                    *counter += 1;
+                    if *counter % 3 == 1 {
                         println!("Pinging back on the same tcp connection...");
                         let _sent = socket.send_to(&data, addr); // TODO: handle this gracefully
                     }
@@ -671,8 +680,8 @@ fn listen(port: u16, udp: SocketType) {
         }
         SocketType::Tcp => {
             let connections = Connections::new();
+            let mut counters = std::collections::HashMap::<SocketAddr, i32>::new();
 
-            let mut counter = 0;
             handle_connections(connections.clone(), move |connections, buffer, _had_one| {
                 let mut connections = connections.data.lock().unwrap();
                 for (port, player_data) in connections.iter_mut() {
@@ -684,9 +693,15 @@ fn listen(port: u16, udp: SocketType) {
                             data.len(),
                             port
                         );
-                        counter += 1;
-                        if counter % 4 == 2 {
-                            println!("Pinging back on the same tcp connection...");
+
+                        let counter = counters.entry(stream.get_tcp_addr().unwrap()).or_default();
+                        *counter += 1;
+                        if *counter % 4 == 2 {
+                            println!(
+                                "Pinging back on the same tcp connection -> {:?} @ {}",
+                                stream.get_tcp_addr(),
+                                data.len()
+                            );
                             let _sent = stream.write(&data); // TODO: handle this gracefully
                         }
                     }

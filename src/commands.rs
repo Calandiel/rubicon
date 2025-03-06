@@ -58,6 +58,7 @@ pub enum Commands {
         port: u16,
         address: String,
         socket: SocketType,
+        data_size: usize,
     },
 
     /// Listens on a port
