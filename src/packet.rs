@@ -197,10 +197,13 @@ pub fn process_packets(
                             // println!("A stream ({:?}) would block upon reading: {:?}", peer, e)
                             break;
                         }
-                        _ => println!(
-                            "A stream ({:?}) returned an error upon reading: {:?}",
-                            player_data.address, e
-                        ),
+                        _ => {
+                            println!(
+                                "A stream ({:?}) returned an error upon reading: {:?}",
+                                player_data.address, e
+                            );
+                            break;
+                        }
                     },
                 }
             }

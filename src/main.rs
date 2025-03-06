@@ -9,7 +9,7 @@ pub mod socket;
 use std::{
     io::{ErrorKind, Read, Write},
     net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
-    sync::mpsc::channel,
+    sync::{mpsc::channel, Arc, Mutex},
     time::{Duration, Instant},
     u8,
 };
@@ -18,8 +18,8 @@ use clap::Parser;
 use client::ClientState;
 use commands::{Args, Commands, SocketType};
 use common::{
-    accept_connections, handle_connections, print_connections, BUFFER_SIZE,
-    DISABLE_NAGLE_ALGORITHM, MINIMUM_TICK_RATE_IN_MS,
+    accept_connections, handle_connections, BUFFER_SIZE, DISABLE_NAGLE_ALGORITHM, MAX_QUEUE_SIZE,
+    MINIMUM_TICK_RATE_IN_MS,
 };
 use connections::Connections;
 use packet::{print_packet, process_packets, CommandPacket, DataPacket, GreetingPacket, Packet};
@@ -110,6 +110,7 @@ fn host(port: u16) {
         std::thread::spawn(move || {
             // Receive UDP packets to relay them to clients.
             let mut buffer = [0u8; BUFFER_SIZE];
+            // let mut recv_count = 0;
             loop {
                 // println!("POG");
                 let begin = Instant::now();
@@ -117,15 +118,17 @@ fn host(port: u16) {
 
                 if let Ok((size, addr)) = udp_socket.recv_from(&mut buffer) {
                     had_one = true;
+                    // recv_count += 1;
+                    // println!("RECV COUNT: {recv_count}");
 
-                    println!("UDP: {}", addr);
+                    // println!("UDP: {}", addr);
 
                     // We need to parse the data to check if its a data packet
                     if let Ok(packet) = bincode::deserialize::<Packet>(&buffer[..size]) {
                         match packet {
                             Packet::Data(data_packet) => {
-                                data_packet.print("host side udp: ");
-                                print_connections(&connections);
+                                // data_packet.print("host side udp: ");
+                                // print_connections(&connections);
                                 let connections = connections.data.lock().unwrap();
                                 if let Some(receiver_tcp_port) = connections.get_player_tcp_port_by_name(&data_packet.receiver_name){
                                     if let Some(player_data) = connections.get(&receiver_tcp_port) {
@@ -133,10 +136,10 @@ fn host(port: u16) {
                                         let mut final_address = addr.clone();
                                         final_address.set_port(player_local_port);
 
-                                        println!(
-                                            "RECEIVED UDP PACKET: {} @ {} FOR {}",
-                                            addr, size, final_address
-                                        );
+                                        // println!(
+                                            // "RECEIVED UDP PACKET: {} @ {} FOR {}",
+                                            // addr, size, final_address
+                                        // );
 
                                         udp_socket.send_to(&buffer[..size], final_address).unwrap();
 
@@ -159,6 +162,7 @@ fn host(port: u16) {
                 let remaining_millis =
                     MINIMUM_TICK_RATE_IN_MS as f64 - begin.elapsed().as_millis() as f64;
                 if !had_one && remaining_millis > 0. {
+                    // println!("SLEEPING ON THE SERVER");
                     std::thread::sleep(Duration::from_millis(remaining_millis as u64));
                 }
             }
@@ -166,7 +170,7 @@ fn host(port: u16) {
     }
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-    accept_connections(&listener, None, None, connections);
+    accept_connections(&listener, None, None, connections, None, None);
 }
 
 fn relay_packets(server: &mut ServerState, packets: &mut Vec<(u16, DataPacket)>) {
@@ -243,8 +247,12 @@ fn connect(
         .unwrap();
     local_outgoing_stream.set_nonblocking(true).unwrap(); // set non blocking AFTER we send the packet
 
+    let udp_packet_queue_size = Arc::new(Mutex::new(0u64));
     let (udp_packet_sender, udp_packet_receiver) = channel::<(u16, Vec<u8>)>();
+    let relay_queue_size = Arc::new(Mutex::new(0u64));
     let (relay_packet_sender, relay_packet_receiver) = channel::<(String, Vec<u8>)>();
+    let udp_packet_queue_size_cloned = udp_packet_queue_size.clone();
+    let relay_queue_size_cloned = relay_queue_size.clone();
 
     // Incomming stream
     let client: ClientState = ClientState::new(
@@ -256,7 +264,6 @@ fn connect(
     let connections = client.connections.clone();
 
     // let relay_server_address = relay_server_address.clone();
-    let mut udp_packet_drain = vec![];
     handle_connections(client, move |client, buffer, _had_one| {
         /*
         let peers: HashSet<u16> = client
@@ -329,11 +336,7 @@ fn connect(
         }
         // Remember to also relay UDP!
         while let Ok((udp_port, data)) = udp_packet_receiver.try_recv() {
-            udp_packet_drain.push((udp_port, data));
-        }
-        // println!("UDP DRAIN SIZE: {}", udp_packet_drain.len());
-        while udp_packet_drain.len() > 0 {
-            let (udp_port, data) = udp_packet_drain.pop().unwrap();
+            *udp_packet_queue_size.lock().unwrap() -= 1;
             // println!("Relaying a udp packet of size {} to the server", data.len());
             //
             if client.is_host() {
@@ -353,12 +356,15 @@ fn connect(
                             client.local_redirection_table.get(&player_identifier)
                         {
                             println!("RELAYING TO: 127.0.0.1:{}", data_packet.receiver_port);
-                            let udp = local_client_connection.udp_socket.as_ref().unwrap();
-                            udp.send_to(
-                                &data_packet.data,
-                                format!("127.0.0.1:{}", data_packet.receiver_port),
-                            )
-                            .unwrap();
+                            local_client_connection
+                                .udp_socket
+                                .as_ref()
+                                .unwrap()
+                                .send_to(
+                                    &data_packet.data,
+                                    format!("127.0.0.1:{}", data_packet.receiver_port),
+                                )
+                                .unwrap();
                             // let (player_name, _player_port, source_port) = (
                             // local_client_connection.player_name.clone(),
                             // local_client_connection.port,
@@ -403,35 +409,41 @@ fn connect(
             }
             */
             } else {
-                if let Ok(packet) = bincode::deserialize::<Packet>(&data) {
-                    // Data packet
-                    if let Packet::Data(data_packet) = packet {
-                        data_packet.print("RECEIVED FOR RELAY");
+                if *relay_queue_size.lock().unwrap() < MAX_QUEUE_SIZE {
+                    if let Ok(packet) = bincode::deserialize::<Packet>(&data) {
+                        // Data packet
+                        if let Packet::Data(data_packet) = packet {
+                            // data_packet.print("RECEIVED FOR RELAY ");
 
+                            relay_packet_sender
+                                .send((
+                                    format!("127.0.0.1:{}", data_packet.receiver_port),
+                                    data_packet.data,
+                                ))
+                                .unwrap();
+                            *relay_queue_size.lock().unwrap() += 1;
+                        }
+                    } else {
+                        let data_packet = DataPacket {
+                            socket_type: SocketType::Udp,
+                            sender_name: client.player_name.clone(),
+                            sender_port: client.player_port,
+                            receiver_name: client.other_player_name.clone(),
+                            receiver_port: client.other_player_port,
+                            data,
+                            source_port: udp_port, // TODO: fix this? If it's even an issue, kekw
+                        };
+                        // data_packet.print("RELAYING TO SERVER ");
                         relay_packet_sender
                             .send((
-                                format!("127.0.0.1:{}", data_packet.receiver_port),
-                                data_packet.data,
+                                relay_server_address.clone(),
+                                bincode::serialize(&Packet::Data(data_packet)).unwrap(),
                             ))
                             .unwrap();
+                        *relay_queue_size.lock().unwrap() += 1;
                     }
                 } else {
-                    let data_packet = DataPacket {
-                        socket_type: SocketType::Udp,
-                        sender_name: client.player_name.clone(),
-                        sender_port: client.player_port,
-                        receiver_name: client.other_player_name.clone(),
-                        receiver_port: client.other_player_port,
-                        data,
-                        source_port: udp_port, // TODO: fix this? If it's even an issue, kekw
-                    };
-                    data_packet.print("RELAYING TO SERVER");
-                    relay_packet_sender
-                        .send((
-                            relay_server_address.clone(),
-                            bincode::serialize(&Packet::Data(data_packet)).unwrap(),
-                        ))
-                        .unwrap();
+                    println!("DROPPING A UDP PACKET! Queue over capacity...");
                 }
             };
             // println!("UDP relay through server for {other_player_name}:{other_player_port} ({source_port}) @ {}", data.len());
@@ -531,6 +543,12 @@ fn connect(
                     .unwrap()
                     .recv_from(buffer)
                 {
+                    local_connection.received_udp_packets_counts += 1;
+                    println!(
+                        "RECEIVED UDP PACKETS: {}",
+                        local_connection.received_udp_packets_counts
+                    );
+
                     // If we receive data, it means we need to relay it to the server!
                     let data = &buffer[..size];
 
@@ -538,7 +556,7 @@ fn connect(
                     if let Ok(_r) = bincode::deserialize::<Packet>(data) {
                         // Structured data, shouldnt happen...
                         println!("Received structured data on a local client udp socket! This should not happen!");
-                    } else {
+                    } else if *relay_queue_size.lock().unwrap() < MAX_QUEUE_SIZE {
                         let data_vec = bincode::serialize(&Packet::Data(DataPacket {
                             socket_type: SocketType::Udp,
                             sender_name: client.player_name.clone(),
@@ -552,6 +570,9 @@ fn connect(
                         relay_packet_sender
                             .send((relay_server_address.clone(), data_vec))
                             .unwrap();
+                        *relay_queue_size.lock().unwrap() += 1;
+                    } else {
+                        println!("Queue over capacity! Dropping the udp thingy...");
                     }
                 }
             } else {
@@ -615,9 +636,9 @@ fn connect(
                                     }
                                 } else {
                                     // Client logic
-                                    println!("CLIENT");
+                                    // println!("CLIENT");
                                     // let locked_connections = connections.data.lock().unwrap();
-                                    print_connections(&connections);
+                                    // print_connections(&connections);
                                     let locked = connections.data.lock().unwrap();
                                     if let Some(player) = locked.get(&data.receiver_port) {
                                         match player.stream.write(&data.data[..]) {
@@ -666,6 +687,8 @@ fn connect(
         Some((format!("0.0.0.0:{}", player_client_port), udp_packet_sender)),
         Some(relay_packet_receiver),
         connections,
+        Some(udp_packet_queue_size_cloned),
+        Some(relay_queue_size_cloned),
     );
 }
 
@@ -783,7 +806,7 @@ fn listen(port: u16, udp: SocketType) {
             });
 
             let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-            accept_connections(&listener, None, None, connections);
+            accept_connections(&listener, None, None, connections, None, None);
         }
     }
 }

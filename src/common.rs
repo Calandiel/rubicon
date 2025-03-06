@@ -1,5 +1,6 @@
 use std::{
     net::{TcpListener, UdpSocket},
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -11,6 +12,7 @@ use crate::{
 pub const DISABLE_NAGLE_ALGORITHM: bool = true;
 pub const MINIMUM_TICK_RATE_IN_MS: u128 = 1;
 pub const BUFFER_SIZE: usize = 1024 * 64;
+pub const MAX_QUEUE_SIZE: u64 = 64;
 
 pub trait ToConnections {
     fn to_connections(&mut self) -> &mut Connections;
@@ -21,6 +23,8 @@ pub fn accept_connections(
     mut udp_address_and_server_relay: Option<(String, std::sync::mpsc::Sender<(u16, Vec<u8>)>)>,
     relay_packets_receiver: Option<std::sync::mpsc::Receiver<(String, Vec<u8>)>>,
     connections: Connections,
+    udp_queue_size: Option<Arc<Mutex<u64>>>,
+    relay_queue_size: Option<Arc<Mutex<u64>>>,
 ) -> ! {
     // let connections_cloned = connections.clone();
     std::thread::spawn(move || {
@@ -34,39 +38,55 @@ pub fn accept_connections(
             udp.set_nonblocking(true).unwrap();
             let mut buffer = [0u8; BUFFER_SIZE];
 
+            let udp_queue_size = udp_queue_size.unwrap().clone();
+            let relay_queue_size = relay_queue_size.unwrap().clone();
+
+            let mut received_packets = 0;
+            let mut sent_packets = 0;
             loop {
                 let begin = Instant::now();
                 let mut had_one = false;
 
                 {
                     // Loop until we empty the queue
-                    // loop {
-                    if let Ok((size, addr)) = udp.recv_from(&mut buffer) {
-                        had_one = true;
-                        // println!("Received udp traffic of size {} from {}", size, addr);
-                        // Welp, gotta send it next!
-                        // But... where to?
-                        // This could be a server setup ;-;
-                        println!("RECEIVED UDP :: {} @ {}", addr, size);
-                        server_relay
-                            .send((addr.port(), buffer[..size].to_vec()))
-                            .unwrap();
-                    } else {
-                        // break;
-                    }
-                    // }
-                    // Loop until we empty the queue
                     loop {
-                        if let Ok((addr, data)) =
-                            relay_packets_receiver.as_ref().unwrap().try_recv()
-                        {
+                        if let Ok((size, addr)) = udp.recv_from(&mut buffer) {
                             had_one = true;
-                            println!("RELAYING UDP DATA TO :: -> {} @ {}", addr, data.len());
-                            udp.send_to(&data, addr).unwrap();
+
+                            if *udp_queue_size.lock().unwrap() < MAX_QUEUE_SIZE {
+                                // println!("Received udp traffic of size {} from {}", size, addr);
+                                // Welp, gotta send it next!
+                                // But... where to?
+                                // This could be a server setup ;-;
+                                // println!("RECEIVED UDP :: {} @ {}", addr, size);
+                                server_relay
+                                    .send((addr.port(), buffer[..size].to_vec()))
+                                    .unwrap();
+                                *udp_queue_size.lock().unwrap() += 1;
+
+                                received_packets += 1;
+                                println!("RECEIVED UDP PACKETS: {}", received_packets);
+                            } else {
+                                println!("QUEUE OVER CAPACITY! DROPPING A UDP PACKET...");
+                            }
                         } else {
                             break;
                         }
                     }
+                    // Loop until we empty the queue
+                    // loop {
+                    if let Ok((addr, data)) = relay_packets_receiver.as_ref().unwrap().try_recv() {
+                        *relay_queue_size.lock().unwrap() -= 1;
+
+                        had_one = true;
+                        // println!("RELAYING UDP DATA TO :: -> {} @ {}", addr, data.len());
+                        udp.send_to(&data, addr).unwrap();
+                        sent_packets += 1;
+                        println!("SENT UDP PACKETS: {}", sent_packets);
+                    } else {
+                        // break;
+                    }
+                    // }
                 }
 
                 let remaining_millis =

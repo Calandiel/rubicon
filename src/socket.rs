@@ -1,6 +1,6 @@
 use std::{
     io::{Read, Write},
-    net::{SocketAddr, TcpStream, UdpSocket},
+    net::{TcpStream, UdpSocket},
     time::Instant,
 };
 
@@ -104,13 +104,13 @@ impl SocketWrapper {
         return self.tcp.is_some();
     }
 
-    pub fn read_udp(&self, buf: &mut [u8]) -> std::io::Result<(usize, SocketAddr)> {
-        self.udp.as_ref().unwrap().recv_from(buf)
-    }
+    //pub fn read_udp(&self, buf: &mut [u8]) -> std::io::Result<(usize, SocketAddr)> {
+    //    self.udp.as_ref().unwrap().recv_from(buf)
+    //}
 
-    pub fn write_udp(&self, buf: &[u8], addr: String) -> std::io::Result<usize> {
-        self.udp.as_ref().unwrap().send_to(buf, addr)
-    }
+    //pub fn write_udp(&self, buf: &[u8], addr: String) -> std::io::Result<usize> {
+    //    self.udp.as_ref().unwrap().send_to(buf, addr)
+    //}
 
     /// Updates udp timeouts
     pub fn touch(&mut self) {
