@@ -267,11 +267,12 @@ fn connect(
     );
     let connections = client.connections.clone();
 
-    let mut last_tick = std::time::Instant::now();
+    let mut udp_packet_count = 0;
+    // let mut last_tick = std::time::Instant::now();
     // let relay_server_address = relay_server_address.clone();
     handle_connections(client, move |client, buffer, had_one| {
-        println!("ELAPSED: {}ms", last_tick.elapsed().as_millis());
-        last_tick = std::time::Instant::now();
+        // println!("ELAPSED: {}ms", last_tick.elapsed().as_millis());
+        // last_tick = std::time::Instant::now();
 
         /*
         let peers: HashSet<u16> = client
@@ -366,7 +367,8 @@ fn connect(
                 if let Ok(packet) = bincode::deserialize::<Packet>(&data) {
                     // Data packet
                     if let Packet::Data(data_packet) = packet {
-                        data_packet.print("DATA PACKET: ");
+                        udp_packet_count += 1;
+                        data_packet.print(format!("DATA PACKET {udp_packet_count}: ").as_str());
                         client.ensure_udp_socket_on_redirection_table(&data_packet);
 
                         let player_identifier = data_packet.get_original_player_identifier();
@@ -750,6 +752,8 @@ fn ping(port: u16, address: String, udp: SocketType, data_size: usize) {
                     received += 1;
                     println!("SENT: {}   VS   RECEIVED: {}", sent_out, received)
                 }
+
+                std::thread::sleep(std::time::Duration::from_millis(1));
             }
         }
         SocketType::Tcp => {
@@ -784,6 +788,7 @@ fn listen(port: u16, udp: SocketType) {
             let socket = UdpSocket::bind(format!("0.0.0.0:{}", port).as_str()).unwrap();
             let mut buf = [0u8; BUFFER_SIZE];
             let mut counters = std::collections::HashMap::<SocketAddr, i32>::new();
+            let mut total_counter = 0;
             loop {
                 if let Ok((size, addr)) = socket.recv_from(&mut buf) {
                     let data = buf[..size].to_vec();
@@ -791,6 +796,8 @@ fn listen(port: u16, udp: SocketType) {
 
                     let counter = counters.entry(addr).or_default();
                     *counter += 1;
+                    total_counter += 1;
+                    println!("RECEIVED {} PACKETS TOTAL", total_counter);
                     if *counter % 3 == 1 {
                         println!("Pinging back on the same tcp connection...");
                         let _sent = socket.send_to(&data, addr); // TODO: handle this gracefully

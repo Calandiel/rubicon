@@ -64,7 +64,10 @@ pub fn handle_udp_traffic(
                             received_packets += 1;
                             // println!("RECEIVED UDP PACKETS: {}", received_packets);
                         } else {
-                            println!("QUEUE OVER CAPACITY! DROPPING A UDP PACKET...");
+                            println!(
+                                "QUEUE OVER CAPACITY {}! DROPPING A UDP PACKET...",
+                                *udp_queue_size.lock().unwrap()
+                            );
                         }
                     } else {
                         // break;
