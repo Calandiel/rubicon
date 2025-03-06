@@ -127,7 +127,7 @@ fn host(port: u16) {
                     if let Ok(packet) = bincode::deserialize::<Packet>(&buffer[..size]) {
                         match packet {
                             Packet::Data(data_packet) => {
-                                // data_packet.print("host side udp: ");
+                                data_packet.print("host side udp: ");
                                 // print_connections(&connections);
                                 let connections = connections.data.lock().unwrap();
                                 if let Some(receiver_tcp_port) = connections.get_player_tcp_port_by_name(&data_packet.receiver_name){
@@ -144,11 +144,15 @@ fn host(port: u16) {
                                         udp_socket.send_to(&buffer[..size], final_address).unwrap();
 
                                         // TODO: CONTINUE HERE - we have the final adress - now we need to deliver it as a data packet with udp, then read it on the other side and relay it to the correct destination uwu
-                                    } else {
-                                        println!("Player has no local port. Are we attempting communication before the greeting packet was delivered?");
-                                    }
-                                    }
-                                }
+    	                                } else {
+	                                        println!("Player has no local port. Are we attempting communication before the greeting packet was 	delivered?");
+                                    	}
+                                    } else  {
+										println!("Connection for the requested port was not found!");
+									}
+                                } else {
+									println!("Player with a requested name ({}) was no found!", data_packet.receiver_name);
+								}
                             },
                             _ => println!("Received a non data udp packet on the server from {addr}. This shouldn't happen, we only accept data on the udp socket!")
                         }
@@ -335,6 +339,16 @@ fn connect(
                 .unwrap(); // TODO: verify that this is OK
         }
         // Remember to also relay UDP!
+        if *udp_packet_queue_size.lock().unwrap() > 0 || *relay_queue_size.lock().unwrap() > 0 {
+            println!(
+                "UDP PACKETS TO SEND TO A LOCAL ADDRESS: {:?}",
+                udp_packet_queue_size.lock().unwrap()
+            );
+            println!(
+                "UDP PACKETS TO SEND TO THE SERVER: {:?}",
+                relay_queue_size.lock().unwrap()
+            );
+        }
         while let Ok((udp_port, data)) = udp_packet_receiver.try_recv() {
             *udp_packet_queue_size.lock().unwrap() -= 1;
             // println!("Relaying a udp packet of size {} to the server", data.len());
@@ -544,10 +558,10 @@ fn connect(
                     .recv_from(buffer)
                 {
                     local_connection.received_udp_packets_counts += 1;
-                    println!(
-                        "RECEIVED UDP PACKETS: {}",
-                        local_connection.received_udp_packets_counts
-                    );
+                    // println!(
+                    // "RECEIVED UDP PACKETS: {}",
+                    // local_connection.received_udp_packets_counts
+                    // );
 
                     // If we receive data, it means we need to relay it to the server!
                     let data = &buffer[..size];
