@@ -12,7 +12,7 @@ use crate::{
 pub const DISABLE_NAGLE_ALGORITHM: bool = true;
 pub const MINIMUM_TICK_RATE_IN_MS: u128 = 1;
 pub const BUFFER_SIZE: usize = 1024 * 64;
-pub const MAX_QUEUE_SIZE: u64 = 64;
+pub const MAX_QUEUE_SIZE: u64 = 1024;
 
 pub trait ToConnections {
     fn to_connections(&mut self) -> &mut Connections;

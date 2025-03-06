@@ -103,6 +103,7 @@ fn host(port: u16) {
         server_state.receive_commands(commands);
     });
 
+    let mut received_packets_counter = 0;
     let udp_socket = UdpSocket::bind(format!("0.0.0.0:{}", port)).unwrap();
     // udp_socket.set_nonblocking(true).unwrap();
     {
@@ -118,6 +119,7 @@ fn host(port: u16) {
 
                 if let Ok((size, addr)) = udp_socket.recv_from(&mut buffer) {
                     had_one = true;
+                    received_packets_counter += 1;
                     // recv_count += 1;
                     // println!("RECV COUNT: {recv_count}");
 
@@ -127,7 +129,7 @@ fn host(port: u16) {
                     if let Ok(packet) = bincode::deserialize::<Packet>(&buffer[..size]) {
                         match packet {
                             Packet::Data(data_packet) => {
-                                data_packet.print("host side udp: ");
+                                data_packet.print(format!("host side udp (received: {}): ", received_packets_counter).as_str());
                                 // print_connections(&connections);
                                 let connections = connections.data.lock().unwrap();
                                 if let Some(receiver_tcp_port) = connections.get_player_tcp_port_by_name(&data_packet.receiver_name){
@@ -453,7 +455,7 @@ fn connect(
                             receiver_name: client.other_player_name.clone(),
                             receiver_port: client.other_player_port,
                             data,
-                            source_port: udp_port, // TODO: fix this? If it's even an issue, kekw
+                            source_port: udp_port, // TODO: fix this? If it's even an issue
                         };
                         // data_packet.print("RELAYING TO SERVER ");
                         relay_packet_sender
@@ -483,7 +485,7 @@ fn connect(
                         receiver_name: other_player_name,
                         receiver_port: other_player_port,
                         data,
-                        source_port, // TODO: fix this? If it's even an issue, kekw
+                        source_port, // TODO: fix this? If it's even an issue
                     }))
                     .unwrap()[..],
                 )
