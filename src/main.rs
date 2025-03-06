@@ -424,7 +424,7 @@ fn connect(
             // local_connection.port,
             // local_connection.original_socket_port
             // );
-            if let Ok(size) = local_connection.stream.read(buffer) {
+            if let Ok(size) = local_connection.stream.as_ref().unwrap().read(buffer) {
                 let data = &buffer[..size];
 
                 // Check if the data is structured.
@@ -441,7 +441,13 @@ fn connect(
                         receiver_name: local_connection.player_name.clone(),
                         receiver_port: local_connection.original_socket_port,
                         data: data.to_vec(),
-                        source_port: local_connection.stream.peer_addr().unwrap().port(),
+                        source_port: local_connection
+                            .stream
+                            .as_ref()
+                            .unwrap()
+                            .peer_addr()
+                            .unwrap()
+                            .port(),
                     };
                     packet.print("SENDING TO THE SERVER: ");
                     let data_packet = Packet::Data(packet);
@@ -491,39 +497,7 @@ fn connect(
                                 // Create the socket if it doesn't exist yet
                                 if client.is_host() {
                                     // Host logic
-                                    if !client
-                                        .local_redirection_table
-                                        .contains_key(&data.get_original_player_identifier())
-                                    {
-                                        // println!(
-                                        // "Adding a new redirection table entry: {} -> {}:{}, with source port {}",
-                                        // data.receiver_port, data.sender_name, data.sender_port, data.source_port
-                                        // );
-                                        let tcp_socket_addr =
-                                            format!("127.0.0.1:{}", data.receiver_port);
-                                        if let Ok(tcp_socket) =
-                                            TcpStream::connect(tcp_socket_addr.clone())
-                                        {
-                                            tcp_socket
-                                                .set_nodelay(DISABLE_NAGLE_ALGORITHM)
-                                                .unwrap();
-                                            tcp_socket.set_nonblocking(true).unwrap();
-                                            client.local_redirection_table.insert(
-                                                data.get_original_player_identifier(),
-                                                ClientLocalConnection {
-                                                    player_name: data.sender_name.clone(),
-                                                    port: data.sender_port,
-                                                    original_socket_port: data.source_port,
-                                                    stream: tcp_socket,
-                                                },
-                                            );
-                                        } else {
-                                            println!(
-                                                "Failed to connect to a local tcp socket: {}",
-                                                tcp_socket_addr
-                                            );
-                                        }
-                                    }
+                                    client.ensure_tcp_socket_on_redirection_table(&data);
 
                                     // Send data to the TCP socket
                                     if let Some(local_connection) = client
@@ -532,8 +506,11 @@ fn connect(
                                     {
                                         //
                                         if data.socket_type == SocketType::Tcp {
-                                            if let Err(e) =
-                                                local_connection.stream.write(&data.data)
+                                            if let Err(e) = local_connection
+                                                .stream
+                                                .as_ref()
+                                                .unwrap()
+                                                .write(&data.data)
                                             {
                                                 match e.kind() {
                                                     std::io::ErrorKind::WouldBlock => {

@@ -1,15 +1,20 @@
-use std::{collections::HashMap, net::TcpStream};
+use std::{
+    collections::HashMap,
+    net::{TcpStream, UdpSocket},
+};
 
 use crate::{
-    common::{print_connections, ToConnections},
+    common::{print_connections, ToConnections, DISABLE_NAGLE_ALGORITHM},
     connections::Connections,
+    packet::DataPacket,
 };
 
 pub struct ClientLocalConnection {
     pub player_name: String,
     pub port: u16,
     pub original_socket_port: u16,
-    pub stream: TcpStream,
+    pub stream: Option<TcpStream>,
+    pub udp_socket: Option<UdpSocket>,
 }
 
 pub struct ClientState {
@@ -46,6 +51,51 @@ impl ClientState {
     /// Check if the client is a game host (if so, player name == other player name)
     pub fn is_host(&self) -> bool {
         self.player_name == self.other_player_name
+    }
+
+    /// Given a data packet, creates the necessary local client connection with a tcp port present.
+    pub fn ensure_tcp_socket_on_redirection_table(&mut self, data: &DataPacket) {
+        if let Some(connection) = self
+            .local_redirection_table
+            .get_mut(&data.get_original_player_identifier())
+        {
+            if connection.stream.is_none() {
+                // There's no tcp stream but the local connection exists
+                // Communication probably started with udp?
+            }
+        } else if let Some(local_connection) =
+            Self::get_local_tcp_socket_for_redirection_table(data)
+        {
+            // There's no  local connection exists
+            self.local_redirection_table.insert(
+                data.get_original_player_identifier(),
+                self.get_local_connection_for_redirection_table(data, local_connection),
+            );
+        }
+    }
+
+    fn get_local_tcp_socket_for_redirection_table(data: &DataPacket) -> Option<TcpStream> {
+        let tcp_socket_addr = format!("127.0.0.1:{}", data.receiver_port);
+        if let Ok(tcp_socket) = TcpStream::connect(tcp_socket_addr.clone()) {
+            tcp_socket.set_nodelay(DISABLE_NAGLE_ALGORITHM).unwrap();
+            tcp_socket.set_nonblocking(true).unwrap();
+            return Some(tcp_socket);
+        }
+        None
+    }
+
+    fn get_local_connection_for_redirection_table(
+        &self,
+        data: &DataPacket,
+        tcp_socket: TcpStream,
+    ) -> ClientLocalConnection {
+        ClientLocalConnection {
+            player_name: data.sender_name.clone(),
+            port: data.sender_port,
+            original_socket_port: data.source_port,
+            stream: Some(tcp_socket),
+            udp_socket: None,
+        }
     }
 }
 impl ToConnections for ClientState {
