@@ -78,15 +78,15 @@ impl InnerConnections {
         true
     }
 
-    pub fn get<'a>(&'a self, k: &u16) -> Option<&'a PlayerData> {
+    pub fn get(&self, k: &u16) -> Option<&PlayerData> {
         self.by_tcp_port.get(k)
     }
 
-    pub fn iter<'a>(&'a self) -> Iter<'a, u16, PlayerData> {
+    pub fn iter(&self) -> Iter<u16, PlayerData> {
         self.by_tcp_port.iter()
     }
 
-    pub fn iter_mut<'a>(&'a mut self) -> IterMut<'a, u16, PlayerData> {
+    pub fn iter_mut(&mut self) -> IterMut<u16, PlayerData> {
         self.by_tcp_port.iter_mut()
     }
 

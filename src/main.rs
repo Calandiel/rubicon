@@ -27,6 +27,13 @@ use server::ServerState;
 
 fn main() {
     let args = Args::parse();
+
+    if let Err(e) = thread_priority::set_current_thread_priority(
+        thread_priority::ThreadPriority::Crossplatform(5.try_into().unwrap()),
+    ) {
+        panic!("{:?}", e);
+    }
+
     // Dispatch from cli
     match args.command {
         Commands::Host { port } => host(port),
@@ -109,6 +116,12 @@ fn host(port: u16) {
     {
         let connections = connections.clone();
         std::thread::spawn(move || {
+            if let Err(e) = thread_priority::set_current_thread_priority(
+                thread_priority::ThreadPriority::Crossplatform(5.try_into().unwrap()),
+            ) {
+                panic!("{:?}", e);
+            }
+
             // Receive UDP packets to relay them to clients.
             let mut buffer = [0u8; BUFFER_SIZE];
             // let mut recv_count = 0;
@@ -614,7 +627,7 @@ fn connect(
 
                 // This is data received from the server.
                 let received_data = &buffer[..received_data];
-                if let Ok(value) = bincode::deserialize::<Packet>(&received_data) {
+                if let Ok(value) = bincode::deserialize::<Packet>(received_data) {
                     match value {
                         Packet::Data(data) => {
                             // let socket_type = data.socket_type;

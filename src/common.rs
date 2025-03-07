@@ -25,6 +25,12 @@ pub fn handle_udp_traffic(
     relay_queue_size: Option<Arc<Mutex<u64>>>,
 ) {
     std::thread::spawn(move || {
+        if let Err(e) = thread_priority::set_current_thread_priority(
+            thread_priority::ThreadPriority::Crossplatform(5.try_into().unwrap()),
+        ) {
+            panic!("{:?}", e);
+        }
+
         // let connections = connections_cloned;
         if let Some((addr, server_relay)) = &mut udp_address_and_server_relay {
             // println!(
@@ -38,8 +44,6 @@ pub fn handle_udp_traffic(
             let udp_queue_size = udp_queue_size.unwrap().clone();
             let relay_queue_size = relay_queue_size.unwrap().clone();
 
-            let mut received_packets = 0;
-            let mut sent_packets = 0;
             loop {
                 let begin = Instant::now();
                 let mut had_one = false;
@@ -61,7 +65,6 @@ pub fn handle_udp_traffic(
                                 .unwrap();
                             *udp_queue_size.lock().unwrap() += 1;
 
-                            received_packets += 1;
                             // println!("RECEIVED UDP PACKETS: {}", received_packets);
                         } else {
                             println!(
@@ -81,7 +84,6 @@ pub fn handle_udp_traffic(
                         had_one = true;
                         // println!("RELAYING UDP DATA TO :: -> {} @ {}", addr, data.len());
                         udp.send_to(&data, addr).unwrap();
-                        sent_packets += 1;
                         // println!("SENT UDP PACKETS: {}", sent_packets);
                     } else {
                         // break;
@@ -147,6 +149,12 @@ pub fn handle_connections<
     mut closure: F,
 ) {
     std::thread::spawn(move || {
+        if let Err(e) = thread_priority::set_current_thread_priority(
+            thread_priority::ThreadPriority::Crossplatform(5.try_into().unwrap()),
+        ) {
+            panic!("{:?}", e);
+        }
+
         let mut buffer = [0u8; BUFFER_SIZE];
         loop {
             let begin = Instant::now();
