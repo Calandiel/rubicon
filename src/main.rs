@@ -60,16 +60,22 @@ fn main() {
         Commands::Command { address, command } => send_command(address, command),
         Commands::MultiConnect {
             server_address,
-            other_player_name,
-            other_player_port,
             player_name,
+            other_player_name,
             player_ports,
-        } => multi_connect(
+        } => multi_connect(server_address, other_player_name, player_name, player_ports),
+        Commands::MassConnect {
+            server_address,
+            player_name,
+            other_player_name,
+            lower_port_inclusive,
+            upper_port_inclusive,
+        } => mass_connect(
             server_address,
             other_player_name,
-            other_player_port,
             player_name,
-            player_ports,
+            lower_port_inclusive,
+            upper_port_inclusive,
         ),
     }
 }
@@ -264,10 +270,38 @@ fn process_disconnection(connections: &mut Connections, disconnected: &mut Vec<u
     }
 }
 
+fn mass_connect(
+    relay_server_address: String,
+    other_player_name: String,
+    player_name: String,
+    lower_port: u16,
+    upper_port: u16,
+) {
+    for port in lower_port..upper_port + 1 {
+        let relay_server_address = relay_server_address.clone();
+        let other_player_name = other_player_name.clone();
+        let player_name = player_name.clone();
+        std::thread::spawn(move || {
+            connect(
+                port,
+                relay_server_address,
+                format!("{player_name}_{port}"),
+                other_player_name,
+                port,
+            );
+        });
+        std::thread::sleep(Duration::from_millis(500));
+    }
+
+    println!("Multi connection established!");
+    loop {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 fn multi_connect(
     relay_server_address: String,
     other_player_name: String,
-    other_player_port: u16,
     player_name: String,
     player_client_port: Vec<u16>,
 ) {
@@ -279,13 +313,15 @@ fn multi_connect(
             connect(
                 port,
                 relay_server_address,
-                player_name,
+                format!("{player_name}_{port}"),
                 other_player_name,
-                other_player_port,
+                port,
             );
         });
+        std::thread::sleep(Duration::from_millis(500));
     }
 
+    println!("Multi connection established!");
     loop {
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -465,7 +501,7 @@ fn connect(
                         }
                         Packet::Heartbeat(_) => {
                             // ignore it, the server is just pinging us back
-                            println!("heartbeat: {}", udp_port);
+                            // println!("heartbeat: {}", udp_port);
                         }
                         _ => {
                             panic!("NOT A DATA PACKET!");
@@ -518,7 +554,7 @@ fn connect(
                             }
                             Packet::Heartbeat(_) => {
                                 // ignore it, the server is just pinging us back
-                                println!("heartbeat: {}", udp_port);
+                                // println!("heartbeat: {}", udp_port);
                             }
                             _ => {
                                 // ignore
