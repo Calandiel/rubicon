@@ -9,6 +9,7 @@ pub enum Packet {
     Command(CommandPacket),
     Data(DataPacket),
     Greeting(GreetingPacket),
+    GreetingReply,
     Heartbeat, // Needed by the UDP to avoid issues with NAT
 }
 
@@ -150,10 +151,18 @@ pub fn process_packets(
                                     commands.push(command.command);
                                 }
                                 Packet::Greeting(greeting) => {
-                                    greetings.push((*port, greeting.clone()))
+                                    greetings.push((*port, greeting.clone()));
+                                    // Ping back with a reply
+                                    player_data
+                                        .stream
+                                        .write(&bincode::serialize(&Packet::GreetingReply).unwrap())
+                                        .unwrap();
                                 }
                                 Packet::Heartbeat => {
                                     println!("Received a heartbeat packet on a tcp socket! This should never happen!");
+                                }
+                                Packet::GreetingReply => {
+                                    println!("Received a greeting reply!");
                                 }
                             }
                         } else {

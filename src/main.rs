@@ -170,6 +170,7 @@ fn host(port: u16) {
 								}
                             },
 							Packet::Heartbeat => {
+								println!("Reacting to a heartbeat request on: {}", addr);
 								// Ping back with a heartbeat packet!
 								udp_socket.send_to(&bincode::serialize(&Packet::Heartbeat).unwrap(), addr).unwrap();
 							}
@@ -421,7 +422,7 @@ fn connect(
                         }
                         Packet::Heartbeat => {
                             // ignore it, the server is just pinging us back
-                            println!("heartbeat!");
+                            println!("heartbeat: {}", udp_port);
                         }
                         _ => {
                             panic!("NOT A DATA PACKET!");
@@ -713,6 +714,9 @@ fn connect(
                                     }
                                 }
                             }
+                        }
+                        Packet::GreetingReply => {
+                            println!("Received a greeting reply from the server! TCP connection established!");
                         }
                         _ => {
                             println!("Weird packet received from the server. Are we being hacked?");
