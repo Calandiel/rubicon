@@ -147,18 +147,19 @@ fn host(port: u16) {
                                 let connections = connections.data.lock().unwrap();
                                 if let Some(receiver_tcp_port) = connections.get_player_tcp_port_by_name(&data_packet.receiver_name){
                                     if let Some(player_data) = connections.get(&receiver_tcp_port) {
-                                        if let Some(player_local_port) = player_data.local_port {
-                                        let mut final_address = addr.clone();
-                                        final_address.set_port(player_local_port);
+                                        if let player_local_port = player_data.last_known_udp_port {
+                                        	let mut final_address = addr.clone();
+                                        	final_address.set_port(player_local_port);
 
-                                        // println!(
-                                            // "RECEIVED UDP PACKET: {} @ {} FOR {}",
-                                            // addr, size, final_address
-                                        // );
+                                    	    // println!(
+                                    	        // "RECEIVED UDP PACKET: {} @ {} FOR {}",
+                                    	        // addr, size, final_address
+                                        	// );
 
-                                        udp_socket.send_to(&buffer[..size], final_address).unwrap();
+											println!("final_address for udp: {}", final_address);
+                                        	udp_socket.send_to(&buffer[..size], final_address).unwrap();
 
-                                        // TODO: CONTINUE HERE - we have the final adress - now we need to deliver it as a data packet with udp, then read it on the other side and relay it to the correct destination uwu
+                                    	    // TODO: CONTINUE HERE - we have the final adress - now we need to deliver it as a data packet with udp, then read it on the other side and relay it to the correct destination uwu
     	                                } else {
 	                                        println!("Player has no local port. Are we attempting communication before the greeting packet was 	delivered?");
                                     	}
@@ -169,10 +170,13 @@ fn host(port: u16) {
 									println!("Player with a requested name ({}) was no found!", data_packet.receiver_name);
 								}
                             },
-							Packet::Heartbeat => {
-								println!("Reacting to a heartbeat request on: {}", addr);
-								// Ping back with a heartbeat packet!
-								udp_socket.send_to(&bincode::serialize(&Packet::Heartbeat).unwrap(), addr).unwrap();
+							Packet::Heartbeat(s) => {
+								if let Some(v) = connections.data.lock().unwrap().get_player_udp_port_by_name_mut(&s) {
+									println!("Reacting to a heartbeat request from player {s} on: {}", addr);
+									// Ping back with a heartbeat packet!
+									*v = addr.port();
+									udp_socket.send_to(&bincode::serialize(&Packet::Heartbeat("".to_string())).unwrap(), addr).unwrap();
+								}
 							}
                             _ => println!("Received a non data udp packet on the server from {addr}. This shouldn't happen, we only accept data on the udp socket!")
                         }
@@ -420,7 +424,7 @@ fn connect(
                                 panic!("redirection table DOESNT contain an entry for the udp port {udp_port}");
                             }
                         }
-                        Packet::Heartbeat => {
+                        Packet::Heartbeat(_) => {
                             // ignore it, the server is just pinging us back
                             println!("heartbeat: {}", udp_port);
                         }
@@ -473,7 +477,7 @@ fn connect(
                                     .unwrap();
                                 *relay_queue_size.lock().unwrap() += 1;
                             }
-                            Packet::Heartbeat => {
+                            Packet::Heartbeat(_) => {
                                 // ignore it, the server is just pinging us back
                                 println!("heartbeat: {}", udp_port);
                             }
@@ -753,6 +757,7 @@ fn connect(
         udp_packet_queue_size_cloned,
         relay_queue_size_cloned,
         relay_server_address_cloned,
+        player_name.clone(),
     );
     accept_connections(&listener, connections);
 }

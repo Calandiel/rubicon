@@ -10,7 +10,7 @@ pub enum Packet {
     Data(DataPacket),
     Greeting(GreetingPacket),
     GreetingReply,
-    Heartbeat, // Needed by the UDP to avoid issues with NAT
+    Heartbeat(String), // Needed by the UDP to avoid issues with NAT
 }
 
 #[derive(Serialize, Deserialize)]
@@ -158,7 +158,7 @@ pub fn process_packets(
                                         .write(&bincode::serialize(&Packet::GreetingReply).unwrap())
                                         .unwrap();
                                 }
-                                Packet::Heartbeat => {
+                                Packet::Heartbeat(_) => {
                                     println!("Received a heartbeat packet on a tcp socket! This should never happen!");
                                 }
                                 Packet::GreetingReply => {

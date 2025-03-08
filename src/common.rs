@@ -26,6 +26,7 @@ pub fn handle_udp_traffic(
     udp_queue_size: Arc<Mutex<u64>>,
     relay_queue_size: Arc<Mutex<u64>>,
     server_address: String,
+    player_name: String,
 ) {
     std::thread::spawn(move || {
         if let Err(e) = thread_priority::set_current_thread_priority(
@@ -52,7 +53,7 @@ pub fn handle_udp_traffic(
 
         // Send the initial heartbeat. Important for communication!
         udp.send_to(
-            &bincode::serialize(&Packet::Heartbeat).unwrap(),
+            &bincode::serialize(&Packet::Heartbeat(player_name.clone())).unwrap(),
             &server_address,
         )
         .unwrap();
@@ -66,7 +67,7 @@ pub fn handle_udp_traffic(
             if last_heartbeat.elapsed().as_secs_f64() > 1. / HEARTBEATS_PER_SECOND {
                 last_heartbeat = Instant::now();
                 udp.send_to(
-                    &bincode::serialize(&Packet::Heartbeat).unwrap(),
+                    &bincode::serialize(&Packet::Heartbeat(player_name.clone())).unwrap(),
                     &server_address,
                 )
                 .unwrap();
@@ -145,6 +146,7 @@ pub fn accept_connections(tcp_listener: &TcpListener, connections: Connections) 
                         address: peer,
                         stream: SocketWrapper::from_tcp_socket(tcp_stream),
                         local_port: None,
+                        last_known_udp_port: 0,
                     },
                 );
             }

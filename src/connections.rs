@@ -19,6 +19,7 @@ pub struct PlayerData {
     pub name: String,
     /// Port the player uses itself, useful for sending udp packets to it!
     pub local_port: Option<u16>,
+    pub last_known_udp_port: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +49,18 @@ impl InnerConnections {
         None
     }
 
+    pub fn get_player_udp_port_by_name_mut(&mut self, name: &String) -> Option<&mut u16> {
+        if let Some(port) = self
+            .by_tcp_port
+            .iter_mut()
+            .find(|(_, player)| &player.name == name)
+            .map(|player| &mut player.1.last_known_udp_port)
+        {
+            return Some(port);
+        }
+        None
+    }
+
     pub fn get_target_stream<'a>(&'a mut self, tcp_port: u16) -> Option<&'a mut SocketWrapper> {
         if let Some(v) = self.by_tcp_port.get_mut(&tcp_port) {
             return Some(&mut v.stream);
@@ -71,6 +84,7 @@ impl InnerConnections {
         }
 
         if let Some(player) = self.by_tcp_port.get_mut(&tcp_port) {
+            println!("Updating port from greeting: {}", greeting.local_port);
             player.name = greeting.player_name.clone();
             player.local_port = Some(greeting.local_port);
         }
