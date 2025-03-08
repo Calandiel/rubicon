@@ -169,6 +169,10 @@ fn host(port: u16) {
 									println!("Player with a requested name ({}) was no found!", data_packet.receiver_name);
 								}
                             },
+							Packet::Heartbeat => {
+								// Ping back with a heartbeat packet!
+								udp_socket.send_to(&bincode::serialize(&Packet::Heartbeat).unwrap(), addr).unwrap();
+							}
                             _ => println!("Received a non data udp packet on the server from {addr}. This shouldn't happen, we only accept data on the udp socket!")
                         }
                     } else {
