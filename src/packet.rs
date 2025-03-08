@@ -9,6 +9,7 @@ pub enum Packet {
     Command(CommandPacket),
     Data(DataPacket),
     Greeting(GreetingPacket),
+    Heartbeat, // Needed by the UDP to avoid issues with NAT
 }
 
 #[derive(Serialize, Deserialize)]
@@ -149,6 +150,9 @@ pub fn process_packets(
                                 }
                                 Packet::Greeting(greeting) => {
                                     greetings.push((*port, greeting.clone()))
+                                }
+                                Packet::Heartbeat => {
+                                    // Nothing to do, we won't receive heartbeats on tcp...
                                 }
                             }
                         } else {

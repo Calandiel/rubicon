@@ -6,6 +6,7 @@ use std::{
 
 use crate::{
     connections::{Connections, PlayerData},
+    packet::Packet,
     socket::SocketWrapper,
 };
 
@@ -13,6 +14,7 @@ pub const DISABLE_NAGLE_ALGORITHM: bool = true;
 pub const MINIMUM_TICK_RATE_IN_MS: u128 = 1;
 pub const BUFFER_SIZE: usize = 1024 * 64;
 pub const MAX_QUEUE_SIZE: u64 = 1024;
+pub const HEARTBEATS_PER_SECOND: f64 = 4.;
 
 pub trait ToConnections {
     fn to_connections(&mut self) -> &mut Connections;
@@ -23,6 +25,7 @@ pub fn handle_udp_traffic(
     relay_packets_receiver: Option<std::sync::mpsc::Receiver<(String, Vec<u8>)>>,
     udp_queue_size: Option<Arc<Mutex<u64>>>,
     relay_queue_size: Option<Arc<Mutex<u64>>>,
+    server_address: String,
 ) {
     std::thread::spawn(move || {
         if let Err(e) = thread_priority::set_current_thread_priority(
@@ -33,21 +36,40 @@ pub fn handle_udp_traffic(
 
         // let connections = connections_cloned;
         if let Some((addr, server_relay)) = &mut udp_address_and_server_relay {
-            // println!(
-            // "Binding a udp socket on {} while accepting connections",
-            // addr
-            // );
+            println!(
+                "Binding a udp socket on {} while accepting connections",
+                addr
+            );
             let udp = UdpSocket::bind(addr.clone()).unwrap();
             udp.set_nonblocking(true).unwrap();
             let mut buffer = [0u8; BUFFER_SIZE];
 
+            // We must send a packet to the server. This is VERY important as it'll let us avoid issues with the NAT.
+
             let udp_queue_size = udp_queue_size.unwrap().clone();
             let relay_queue_size = relay_queue_size.unwrap().clone();
 
+            // Send the initial heartbeat. Important for communication!
+            udp.send_to(
+                &bincode::serialize(&Packet::Heartbeat).unwrap(),
+                &server_address,
+            )
+            .unwrap();
+
+            let mut last_heartbeat = Instant::now();
             loop {
                 let begin = Instant::now();
                 let mut had_one = false;
 
+                // Keep the connection going and send the heartbeat again
+                if last_heartbeat.elapsed().as_secs_f64() > 1. / HEARTBEATS_PER_SECOND {
+                    last_heartbeat = Instant::now();
+                    udp.send_to(
+                        &bincode::serialize(&Packet::Heartbeat).unwrap(),
+                        &server_address,
+                    )
+                    .unwrap();
+                }
                 {
                     // Loop until we empty the queue
                     // loop {
