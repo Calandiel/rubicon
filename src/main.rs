@@ -148,7 +148,7 @@ fn host(port: u16) {
                                 if let Some(receiver_tcp_port) = connections.get_player_tcp_port_by_name(&data_packet.receiver_name){
                                     if let Some(player_data) = connections.get(&receiver_tcp_port) {
                                         if let player_local_port = player_data.last_known_udp_port {
-                                        	let mut final_address = addr.clone();
+                                        	let mut final_address = player_data.address.clone();
                                         	final_address.set_port(player_local_port);
 
                                     	    // println!(
@@ -157,7 +157,7 @@ fn host(port: u16) {
                                         	// );
 
 											println!("final_address for udp: {}", final_address);
-                                        	udp_socket.send_to(&buffer[..size], final_address).unwrap();
+                                        	let _ = udp_socket.send_to(&buffer[..size], final_address);
 
                                     	    // TODO: CONTINUE HERE - we have the final adress - now we need to deliver it as a data packet with udp, then read it on the other side and relay it to the correct destination uwu
     	                                } else {
@@ -175,7 +175,7 @@ fn host(port: u16) {
 									println!("Reacting to a heartbeat request from player {s} on: {}", addr);
 									// Ping back with a heartbeat packet!
 									*v = addr.port();
-									udp_socket.send_to(&bincode::serialize(&Packet::Heartbeat("".to_string())).unwrap(), addr).unwrap();
+									let _ = udp_socket.send_to(&bincode::serialize(&Packet::Heartbeat("".to_string())).unwrap(), addr);
 								}
 							}
                             _ => println!("Received a non data udp packet on the server from {addr}. This shouldn't happen, we only accept data on the udp socket!")
@@ -404,15 +404,14 @@ fn connect(
                                 client.local_redirection_table.get(&player_identifier)
                             {
                                 // println!("RELAYING TO: 127.0.0.1:{}", data_packet.receiver_port);
-                                local_client_connection
+                                let _ = local_client_connection
                                     .udp_socket
                                     .as_ref()
                                     .unwrap()
                                     .send_to(
                                         &data_packet.data,
                                         format!("127.0.0.1:{}", data_packet.receiver_port),
-                                    )
-                                    .unwrap();
+                                    );
                                 // let (player_name, _player_port, source_port) = (
                                 // local_client_connection.player_name.clone(),
                                 // local_client_connection.port,

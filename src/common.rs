@@ -52,11 +52,10 @@ pub fn handle_udp_traffic(
         let relay_queue_size = relay_queue_size.clone();
 
         // Send the initial heartbeat. Important for communication!
-        udp.send_to(
+        let _ = udp.send_to(
             &bincode::serialize(&Packet::Heartbeat(player_name.clone())).unwrap(),
             &server_address,
-        )
-        .unwrap();
+        );
 
         let mut last_heartbeat = Instant::now();
         loop {
@@ -66,11 +65,10 @@ pub fn handle_udp_traffic(
             // Keep the connection going and send the heartbeat again
             if last_heartbeat.elapsed().as_secs_f64() > 1. / HEARTBEATS_PER_SECOND {
                 last_heartbeat = Instant::now();
-                udp.send_to(
+                let _ = udp.send_to(
                     &bincode::serialize(&Packet::Heartbeat(player_name.clone())).unwrap(),
                     &server_address,
-                )
-                .unwrap();
+                );
             }
             {
                 // Loop until we empty the queue
@@ -107,7 +105,9 @@ pub fn handle_udp_traffic(
 
                     had_one = true;
                     // println!("RELAYING UDP DATA TO :: -> {} @ {}", addr, data.len());
-                    udp.send_to(&data, addr).unwrap();
+                    if let Err(e) = udp.send_to(&data, addr) {
+                        println!("ERROR WHEN SENDING A UDP PACKET: {}", e);
+                    }
                     // println!("SENT UDP PACKETS: {}", sent_packets);
                 } else {
                     // break;
