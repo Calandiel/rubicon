@@ -421,6 +421,7 @@ fn connect(
                         }
                         Packet::Heartbeat => {
                             // ignore it, the server is just pinging us back
+                            println!("heartbeat!");
                         }
                         _ => {
                             panic!("NOT A DATA PACKET!");
