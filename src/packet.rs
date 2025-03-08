@@ -124,6 +124,7 @@ pub fn process_packets(
                         }
                         let sliced_data = &buffer[..value];
                         let deserialize = bincode::deserialize::<Packet>(sliced_data);
+                        // println!("BYTES: {:?}", sliced_data);
                         if let Ok(packet) = deserialize {
                             // Check if the received port exists!
                             match packet {
@@ -152,14 +153,14 @@ pub fn process_packets(
                                     greetings.push((*port, greeting.clone()))
                                 }
                                 Packet::Heartbeat => {
-                                    // Nothing to do, we won't receive heartbeats on tcp...
+                                    println!("Received a heartbeat packet on a tcp socket! This should never happen!");
                                 }
                             }
                         } else {
-                            // println!(
-                            // "Failed to decode the packet. Data size: {}. Port: {}. Potentially a packed received locally, intended for transmission.",
-                            // sliced_data.len(), player_data.address.port()
-                            // );
+                            println!(
+                            "Failed to decode the packet. Data size: {}. Port: {}. Potentially a packed received locally, intended for transmission.",
+                            sliced_data.len(), player_data.address.port()
+                            );
                             if is_host {
                                 // If we're a host, we need to resolve the address ourselves
                                 // rejected_packets_buffers.push((default_receiver_name.clone(), default_receiver_port ,sliced_data.to_vec()));
@@ -181,7 +182,10 @@ pub fn process_packets(
                                     println!(
                                         "Retrieval of receivers name failed on port: {}",
                                         *port
-                                    )
+                                    );
+                                    for (k, _) in redirection_table.iter() {
+                                        println!("redirection table entry: {}", k);
+                                    }
                                 }
                             } else {
                                 // If we're not a host, just target the default receiver.

@@ -21,10 +21,10 @@ pub trait ToConnections {
 }
 
 pub fn handle_udp_traffic(
-    mut udp_address_and_server_relay: Option<(String, std::sync::mpsc::Sender<(u16, Vec<u8>)>)>,
-    relay_packets_receiver: Option<std::sync::mpsc::Receiver<(String, Vec<u8>)>>,
-    udp_queue_size: Option<Arc<Mutex<u64>>>,
-    relay_queue_size: Option<Arc<Mutex<u64>>>,
+    mut udp_address_and_server_relay: (String, std::sync::mpsc::Sender<(u16, Vec<u8>)>),
+    relay_packets_receiver: std::sync::mpsc::Receiver<(String, Vec<u8>)>,
+    udp_queue_size: Arc<Mutex<u64>>,
+    relay_queue_size: Arc<Mutex<u64>>,
     server_address: String,
 ) {
     std::thread::spawn(move || {
@@ -35,89 +35,89 @@ pub fn handle_udp_traffic(
         }
 
         // let connections = connections_cloned;
-        if let Some((addr, server_relay)) = &mut udp_address_and_server_relay {
-            println!(
-                "Binding a udp socket on {} while accepting connections",
-                addr
-            );
-            let udp = UdpSocket::bind(addr.clone()).unwrap();
-            udp.set_nonblocking(true).unwrap();
-            let mut buffer = [0u8; BUFFER_SIZE];
+        let (addr, server_relay) = &mut udp_address_and_server_relay;
 
-            // We must send a packet to the server. This is VERY important as it'll let us avoid issues with the NAT.
+        println!(
+            "Binding a udp socket on {} while accepting connections",
+            addr
+        );
+        let udp = UdpSocket::bind(addr.clone()).unwrap();
+        udp.set_nonblocking(true).unwrap();
+        let mut buffer = [0u8; BUFFER_SIZE];
 
-            let udp_queue_size = udp_queue_size.unwrap().clone();
-            let relay_queue_size = relay_queue_size.unwrap().clone();
+        // We must send a packet to the server. This is VERY important as it'll let us avoid issues with the NAT.
 
-            // Send the initial heartbeat. Important for communication!
-            udp.send_to(
-                &bincode::serialize(&Packet::Heartbeat).unwrap(),
-                &server_address,
-            )
-            .unwrap();
+        let udp_queue_size = udp_queue_size.clone();
+        let relay_queue_size = relay_queue_size.clone();
 
-            let mut last_heartbeat = Instant::now();
-            loop {
-                let begin = Instant::now();
-                let mut had_one = false;
+        // Send the initial heartbeat. Important for communication!
+        udp.send_to(
+            &bincode::serialize(&Packet::Heartbeat).unwrap(),
+            &server_address,
+        )
+        .unwrap();
 
-                // Keep the connection going and send the heartbeat again
-                if last_heartbeat.elapsed().as_secs_f64() > 1. / HEARTBEATS_PER_SECOND {
-                    last_heartbeat = Instant::now();
-                    udp.send_to(
-                        &bincode::serialize(&Packet::Heartbeat).unwrap(),
-                        &server_address,
-                    )
-                    .unwrap();
-                }
-                {
-                    // Loop until we empty the queue
-                    // loop {
-                    if let Ok((size, addr)) = udp.recv_from(&mut buffer) {
-                        had_one = true;
+        let mut last_heartbeat = Instant::now();
+        loop {
+            let begin = Instant::now();
+            let mut had_one = false;
 
-                        if *udp_queue_size.lock().unwrap() < MAX_QUEUE_SIZE {
-                            // println!("Received udp traffic of size {} from {}", size, addr);
-                            // Welp, gotta send it next!
-                            // But... where to?
-                            // This could be a server setup ;-;
-                            // println!("RECEIVED UDP :: {} @ {}", addr, size);
-                            server_relay
-                                .send((addr.port(), buffer[..size].to_vec()))
-                                .unwrap();
-                            *udp_queue_size.lock().unwrap() += 1;
+            // Keep the connection going and send the heartbeat again
+            if last_heartbeat.elapsed().as_secs_f64() > 1. / HEARTBEATS_PER_SECOND {
+                last_heartbeat = Instant::now();
+                udp.send_to(
+                    &bincode::serialize(&Packet::Heartbeat).unwrap(),
+                    &server_address,
+                )
+                .unwrap();
+            }
+            {
+                // Loop until we empty the queue
+                // loop {
+                if let Ok((size, addr)) = udp.recv_from(&mut buffer) {
+                    had_one = true;
 
-                            // println!("RECEIVED UDP PACKETS: {}", received_packets);
-                        } else {
-                            println!(
-                                "QUEUE OVER CAPACITY {}! DROPPING A UDP PACKET...",
-                                *udp_queue_size.lock().unwrap()
-                            );
-                        }
+                    if *udp_queue_size.lock().unwrap() < MAX_QUEUE_SIZE {
+                        // println!("Received udp traffic of size {} from {}", size, addr);
+                        // Welp, gotta send it next!
+                        // But... where to?
+                        // This could be a server setup ;-;
+                        // println!("RECEIVED UDP :: {} @ {}", addr, size);
+                        server_relay
+                            .send((addr.port(), buffer[..size].to_vec()))
+                            .unwrap();
+                        *udp_queue_size.lock().unwrap() += 1;
+
+                        // println!("RECEIVED UDP PACKETS: {}", received_packets);
                     } else {
-                        // break;
+                        println!(
+                            "QUEUE OVER CAPACITY {}! DROPPING A UDP PACKET...",
+                            *udp_queue_size.lock().unwrap()
+                        );
                     }
-                    // }
-                    // Loop until we empty the queue
-                    // loop {
-                    if let Ok((addr, data)) = relay_packets_receiver.as_ref().unwrap().try_recv() {
-                        *relay_queue_size.lock().unwrap() -= 1;
-
-                        had_one = true;
-                        // println!("RELAYING UDP DATA TO :: -> {} @ {}", addr, data.len());
-                        udp.send_to(&data, addr).unwrap();
-                        // println!("SENT UDP PACKETS: {}", sent_packets);
-                    } else {
-                        // break;
-                    }
-                    // }
+                } else {
+                    // break;
                 }
+                // }
+                // Loop until we empty the queue
+                // loop {
+                if let Ok((addr, data)) = relay_packets_receiver.try_recv() {
+                    *relay_queue_size.lock().unwrap() -= 1;
 
-                let remaining_millis =
-                    MINIMUM_TICK_RATE_IN_MS as f64 - begin.elapsed().as_millis() as f64;
-                if !had_one && remaining_millis > 0. {
-                    std::thread::sleep(Duration::from_millis(remaining_millis as u64));
+                    had_one = true;
+                    // println!("RELAYING UDP DATA TO :: -> {} @ {}", addr, data.len());
+                    udp.send_to(&data, addr).unwrap();
+                    // println!("SENT UDP PACKETS: {}", sent_packets);
+                } else {
+                    // break;
                 }
+                // }
+            }
+
+            let remaining_millis =
+                MINIMUM_TICK_RATE_IN_MS as f64 - begin.elapsed().as_millis() as f64;
+            if !had_one && remaining_millis > 0. {
+                std::thread::sleep(Duration::from_millis(remaining_millis as u64));
             }
         }
     });

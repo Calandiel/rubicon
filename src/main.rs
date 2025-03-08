@@ -287,7 +287,6 @@ fn connect(
     );
     let connections = client.connections.clone();
 
-    let mut udp_packet_count = 0;
     // let mut last_tick = std::time::Instant::now();
     // let relay_server_address = relay_server_address.clone();
     let relay_server_address_cloned = relay_server_address.clone();
@@ -379,7 +378,7 @@ fn connect(
         */
         while let Ok((udp_port, data)) = udp_packet_receiver.try_recv() {
             *udp_packet_queue_size.lock().unwrap() -= 1;
-            // println!("Relaying a udp packet of size {} to the server", data.len());
+
             //
             if client.is_host() {
                 // We're the host!
@@ -387,41 +386,45 @@ fn connect(
                 // If it is, we need to ensure we have the udp socket existing
                 if let Ok(packet) = bincode::deserialize::<Packet>(&data) {
                     // Data packet
-                    if let Packet::Data(data_packet) = packet {
-                        udp_packet_count += 1;
-                        data_packet.print(format!("DATA PACKET {udp_packet_count}: ").as_str());
-                        client.ensure_udp_socket_on_redirection_table(&data_packet);
+                    match packet {
+                        Packet::Data(data_packet) => {
+                            client.ensure_udp_socket_on_redirection_table(&data_packet);
 
-                        data_packet.print("UDP: ");
-                        let player_identifier = data_packet.get_original_player_identifier();
-                        // println!("IDENTIFIER: {}", player_identifier);
-                        // client.ensure_udp_socket_on_redirection_table(data);
-                        if let Some(local_client_connection) =
-                            client.local_redirection_table.get(&player_identifier)
-                        {
-                            // println!("RELAYING TO: 127.0.0.1:{}", data_packet.receiver_port);
-                            local_client_connection
-                                .udp_socket
-                                .as_ref()
-                                .unwrap()
-                                .send_to(
-                                    &data_packet.data,
-                                    format!("127.0.0.1:{}", data_packet.receiver_port),
-                                )
-                                .unwrap();
-                            // let (player_name, _player_port, source_port) = (
-                            // local_client_connection.player_name.clone(),
-                            // local_client_connection.port,
-                            // local_client_connection.original_socket_port,
-                            // );
-                            // println!("redirection table contains an entry for the udp port {udp_port}");
-                            // (player_name, source_port.clone(), source_port.clone());
-                        } else {
-                            panic!("redirection table DOESNT contain an entry for the udp port {udp_port}");
+                            data_packet.print("RELATING A DATA PACKET TO A LOCAL CONNECTION: ");
+
+                            let player_identifier = data_packet.get_original_player_identifier();
+                            // println!("IDENTIFIER: {}", player_identifier);
+                            // client.ensure_udp_socket_on_redirection_table(data);
+                            if let Some(local_client_connection) =
+                                client.local_redirection_table.get(&player_identifier)
+                            {
+                                // println!("RELAYING TO: 127.0.0.1:{}", data_packet.receiver_port);
+                                local_client_connection
+                                    .udp_socket
+                                    .as_ref()
+                                    .unwrap()
+                                    .send_to(
+                                        &data_packet.data,
+                                        format!("127.0.0.1:{}", data_packet.receiver_port),
+                                    )
+                                    .unwrap();
+                                // let (player_name, _player_port, source_port) = (
+                                // local_client_connection.player_name.clone(),
+                                // local_client_connection.port,
+                                // local_client_connection.original_socket_port,
+                                // );
+                                // println!("redirection table contains an entry for the udp port {udp_port}");
+                                // (player_name, source_port.clone(), source_port.clone());
+                            } else {
+                                panic!("redirection table DOESNT contain an entry for the udp port {udp_port}");
+                            }
                         }
-                    } else {
-                        // Not a data packet, its some other packet type
-                        panic!("NOT A DATA PACKET!");
+                        Packet::Heartbeat => {
+                            // ignore it, the server is just pinging us back
+                        }
+                        _ => {
+                            panic!("NOT A DATA PACKET!");
+                        }
                     }
                 } else {
                     // Not a data packet, instead, its unstructured information
@@ -640,7 +643,7 @@ fn connect(
                             // let socket_type = data.socket_type;
                             data.print("packet received from the server: ");
                             if client.player_name != data.receiver_name {
-                                // println!("Received data meant for another player! Weird!");
+                                println!("Received data meant for another player! Weird!");
                             } else {
                                 // let receiver_port = data.receiver_port;
                                 // let address = SocketAddr::from_str(
@@ -731,10 +734,10 @@ fn connect(
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", player_client_port)).unwrap();
     handle_udp_traffic(
-        Some((format!("0.0.0.0:{}", player_client_port), udp_packet_sender)),
-        Some(relay_packet_receiver),
-        Some(udp_packet_queue_size_cloned),
-        Some(relay_queue_size_cloned),
+        (format!("0.0.0.0:{}", player_client_port), udp_packet_sender),
+        relay_packet_receiver,
+        udp_packet_queue_size_cloned,
+        relay_queue_size_cloned,
         relay_server_address_cloned,
     );
     accept_connections(&listener, connections);
