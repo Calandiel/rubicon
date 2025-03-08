@@ -461,16 +461,25 @@ fn connect(
                 if *relay_queue_size.lock().unwrap() < MAX_QUEUE_SIZE {
                     if let Ok(packet) = bincode::deserialize::<Packet>(&data) {
                         // Data packet
-                        if let Packet::Data(data_packet) = packet {
-                            data_packet.print("RECEIVED FOR RELAY ");
+                        match packet {
+                            Packet::Data(data_packet) => {
+                                data_packet.print("RECEIVED FOR RELAY ");
 
-                            relay_packet_sender
-                                .send((
-                                    format!("127.0.0.1:{}", data_packet.receiver_port),
-                                    data_packet.data,
-                                ))
-                                .unwrap();
-                            *relay_queue_size.lock().unwrap() += 1;
+                                relay_packet_sender
+                                    .send((
+                                        format!("127.0.0.1:{}", data_packet.receiver_port),
+                                        data_packet.data,
+                                    ))
+                                    .unwrap();
+                                *relay_queue_size.lock().unwrap() += 1;
+                            }
+                            Packet::Heartbeat => {
+                                // ignore it, the server is just pinging us back
+                                println!("heartbeat: {}", udp_port);
+                            }
+                            _ => {
+                                // ignore
+                            }
                         }
                     } else {
                         let data_packet = DataPacket {
