@@ -58,6 +58,19 @@ fn main() {
         } => ping(port, address, socket, data_size),
         Commands::Listen { port, socket } => listen(port, socket),
         Commands::Command { address, command } => send_command(address, command),
+        Commands::MultiConnect {
+            server_address,
+            other_player_name,
+            other_player_port,
+            player_name,
+            player_ports,
+        } => multi_connect(
+            server_address,
+            other_player_name,
+            other_player_port,
+            player_name,
+            player_ports,
+        ),
     }
 }
 
@@ -248,6 +261,33 @@ fn process_disconnection(connections: &mut Connections, disconnected: &mut Vec<u
     for disconnect in disconnected {
         println!("Disconnecting: {}", disconnect);
         locked_connections.remove(disconnect);
+    }
+}
+
+fn multi_connect(
+    relay_server_address: String,
+    other_player_name: String,
+    other_player_port: u16,
+    player_name: String,
+    player_client_port: Vec<u16>,
+) {
+    for port in player_client_port {
+        let relay_server_address = relay_server_address.clone();
+        let other_player_name = other_player_name.clone();
+        let player_name = player_name.clone();
+        std::thread::spawn(move || {
+            connect(
+                port,
+                relay_server_address,
+                player_name,
+                other_player_name,
+                other_player_port,
+            );
+        });
+    }
+
+    loop {
+        std::thread::sleep(Duration::from_millis(50));
     }
 }
 

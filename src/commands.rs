@@ -52,6 +52,21 @@ pub enum Commands {
         other_player_port: u16,
     },
 
+    #[command(arg_required_else_help = true)]
+    MultiConnect {
+        /// Adress of the host
+        server_address: String,
+        /// Name of the other player to connect to.
+        other_player_name: String,
+        /// The port on their machine to route the traffic to.
+        other_player_port: u16,
+        /// Name of the player, used as an identifier
+        player_name: String,
+        /// Local port to be used as a connection point for the incoming packets.
+        /// rubicon may bind tcp/udp sockets on this port so make sure it's free.
+        player_ports: Vec<u16>,
+    },
+
     /// Pings a tcp socket at a given address from a given port.
     #[command(arg_required_else_help = true)]
     Ping {
