@@ -195,6 +195,8 @@ fn host(port: u16) {
 									// Ping back with a heartbeat packet!
 									*v = addr.port();
 									let _ = udp_socket.send_to(&bincode::serialize(&Packet::Heartbeat("".to_string())).unwrap(), addr);
+								} else {
+									println!("Received a heartbut but failed to retrieve the player {s} on: {}", addr);
 								}
 							}
                             _ => println!("Received a non data udp packet on the server from {addr}. This shouldn't happen, we only accept data on the udp socket!")
@@ -501,7 +503,7 @@ fn connect(
                         }
                         Packet::Heartbeat(_) => {
                             // ignore it, the server is just pinging us back
-                            // println!("heartbeat: {}", udp_port);
+                            println!("heartbeat: {}", udp_port);
                         }
                         _ => {
                             panic!("NOT A DATA PACKET!");
@@ -554,10 +556,11 @@ fn connect(
                             }
                             Packet::Heartbeat(_) => {
                                 // ignore it, the server is just pinging us back
-                                // println!("heartbeat: {}", udp_port);
+                                println!("heartbeat: {}", udp_port);
                             }
                             _ => {
                                 // ignore
+                                println!("RECEIVED WEIRD STRUCTURED DATA!");
                             }
                         }
                     } else {
