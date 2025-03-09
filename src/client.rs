@@ -6,7 +6,7 @@ use std::{
 use crate::{
     common::{print_connections, ToConnections, DISABLE_NAGLE_ALGORITHM},
     connections::Connections,
-    packet::DataPacket,
+    packet::{DataPacket, DataPacketLike},
 };
 
 pub struct ClientLocalConnection {
@@ -74,7 +74,7 @@ impl ClientState {
     }
 
     /// Given a data packet, creates the necessary local client connection with a tcp port present.
-    pub fn ensure_tcp_socket_on_redirection_table(&mut self, data: &DataPacket) {
+    pub fn ensure_tcp_socket_on_redirection_table<D: DataPacketLike>(&mut self, data: &D) {
         if let Some(connection) = self
             .local_redirection_table
             .get_mut(&data.get_original_player_identifier())
@@ -112,8 +112,10 @@ impl ClientState {
         }
     }
 
-    fn get_local_tcp_socket_for_redirection_table(data: &DataPacket) -> Option<TcpStream> {
-        let tcp_socket_addr = format!("127.0.0.1:{}", data.receiver_port);
+    fn get_local_tcp_socket_for_redirection_table<D: DataPacketLike>(
+        data: &D,
+    ) -> Option<TcpStream> {
+        let tcp_socket_addr = format!("127.0.0.1:{}", data.get_receiver_port());
         if let Ok(tcp_socket) = TcpStream::connect(tcp_socket_addr.clone()) {
             tcp_socket.set_nodelay(DISABLE_NAGLE_ALGORITHM).unwrap();
             tcp_socket.set_nonblocking(true).unwrap();
@@ -122,15 +124,15 @@ impl ClientState {
         None
     }
 
-    fn get_local_connection_for_redirection_table_from_tcp(
+    fn get_local_connection_for_redirection_table_from_tcp<D: DataPacketLike>(
         &self,
-        data: &DataPacket,
+        data: &D,
         tcp_socket: TcpStream,
     ) -> ClientLocalConnection {
         ClientLocalConnection {
-            player_name: data.sender_name.clone(),
-            port: data.sender_port,
-            original_socket_port: data.source_port,
+            player_name: data.get_sender_name(),
+            port: data.get_sender_port(),
+            original_socket_port: data.get_source_port(),
             stream: Some(tcp_socket),
             received_udp_packets_counts: 0,
             udp_socket: None,

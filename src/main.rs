@@ -23,8 +23,8 @@ use common::{
 };
 use connections::{Connections, PlayerData};
 use packet::{
-    print_packet, process_packets, CommandPacket, ConnectionPacket, DataPacket, GreetingPacket,
-    Packet,
+    print_packet, process_packets, CommandPacket, ConnectionPacket, DataPacket, DataPacketLike,
+    GreetingPacket, Packet,
 };
 use server::ServerState;
 
@@ -855,8 +855,27 @@ fn connect(
                         Packet::GreetingReply => {
                             println!("Received a greeting reply from the server! TCP connection established!");
                         }
+                        Packet::Connection(con) => {
+                            if client.is_host() {
+                                println!(
+                                    "New tcp connection established: {}:{} ({}) -> {}:{}",
+                                    con.sender_name,
+                                    con.sender_port,
+                                    con.source_port,
+                                    con.receiver_name,
+                                    con.receiver_port
+                                );
+                                // Host logic
+                                client.ensure_tcp_socket_on_redirection_table(&con);
+                            } else {
+                                println!("Received a connection packet on non host rubicon instance. That's weird! {:?}", con);
+                            }
+                        }
                         _ => {
-                            println!("Weird packet received from the server. Are we being hacked?");
+                            println!(
+                                "Weird packet received from the server. Are we being hacked? {:?}",
+                                value
+                            );
                         }
                     }
                 }

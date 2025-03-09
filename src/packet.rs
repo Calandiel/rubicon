@@ -4,7 +4,23 @@ use serde::{Deserialize, Serialize};
 
 use crate::{client::ClientLocalConnection, commands::SocketType, connections::Connections};
 
-#[derive(Serialize, Deserialize)]
+pub trait DataPacketLike {
+    fn get_sender_name(&self) -> String;
+    fn get_sender_port(&self) -> u16;
+    fn get_source_port(&self) -> u16;
+    fn get_receiver_name(&self) -> String;
+    fn get_receiver_port(&self) -> u16;
+
+    fn get_player_identifier(&self) -> String {
+        format!("{}:{}", self.get_sender_name(), self.get_sender_port())
+    }
+
+    fn get_original_player_identifier(&self) -> String {
+        format!("{}:{}", self.get_sender_name(), self.get_source_port())
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub enum Packet {
     Command(CommandPacket),
     Data(DataPacket),
@@ -15,7 +31,7 @@ pub enum Packet {
 }
 
 /// For announcting TCP connections
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ConnectionPacket {
     pub sender_name: String,
     pub sender_port: u16,
@@ -23,13 +39,34 @@ pub struct ConnectionPacket {
     pub receiver_port: u16,
     pub source_port: u16,
 }
+impl DataPacketLike for ConnectionPacket {
+    fn get_sender_name(&self) -> String {
+        self.sender_name.clone()
+    }
 
-#[derive(Serialize, Deserialize)]
+    fn get_sender_port(&self) -> u16 {
+        self.sender_port
+    }
+
+    fn get_source_port(&self) -> u16 {
+        self.source_port
+    }
+
+    fn get_receiver_name(&self) -> String {
+        self.receiver_name.clone()
+    }
+
+    fn get_receiver_port(&self) -> u16 {
+        self.receiver_port
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct CommandPacket {
     pub command: String,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct DataPacket {
     pub socket_type: SocketType,
     pub sender_name: String,
@@ -40,14 +77,6 @@ pub struct DataPacket {
     pub source_port: u16,
 }
 impl DataPacket {
-    pub fn get_player_identifier(&self) -> String {
-        format!("{}:{}", self.sender_name, self.sender_port)
-    }
-
-    pub fn get_original_player_identifier(&self) -> String {
-        format!("{}:{}", self.sender_name, self.source_port)
-    }
-
     pub fn print(&self, prefix: &str) {
         print_packet(
             prefix,
@@ -59,6 +88,27 @@ impl DataPacket {
             self.receiver_port,
             self.data.len(),
         );
+    }
+}
+impl DataPacketLike for DataPacket {
+    fn get_sender_name(&self) -> String {
+        self.sender_name.clone()
+    }
+
+    fn get_sender_port(&self) -> u16 {
+        self.sender_port
+    }
+
+    fn get_source_port(&self) -> u16 {
+        self.source_port
+    }
+
+    fn get_receiver_name(&self) -> String {
+        self.receiver_name.clone()
+    }
+
+    fn get_receiver_port(&self) -> u16 {
+        self.receiver_port
     }
 }
 
@@ -85,7 +135,7 @@ pub fn print_packet(
     )
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct GreetingPacket {
     pub player_name: String,
     pub local_port: u16,
