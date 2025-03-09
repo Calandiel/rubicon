@@ -64,7 +64,7 @@ impl ClientState {
                 // Communication probably started with tcp?
             }
         } else {
-            // There's no local connection exists
+            // There's no local connection
             let local_connection = Self::get_local_udp_socket_for_redirection_table();
             self.local_redirection_table.insert(
                 data.get_original_player_identifier(),
@@ -86,6 +86,11 @@ impl ClientState {
         } else if let Some(local_connection) =
             Self::get_local_tcp_socket_for_redirection_table(data)
         {
+            println!(
+                "Bound new tcp stream: {} -> {}",
+                local_connection.local_addr().unwrap(),
+                local_connection.peer_addr().unwrap()
+            );
             // There's no local connection exists
             self.local_redirection_table.insert(
                 data.get_original_player_identifier(),
