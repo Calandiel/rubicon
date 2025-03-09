@@ -139,6 +139,7 @@ pub fn accept_connections(tcp_listener: &TcpListener, connections: Connections) 
                 let mut connections = connections.data.lock().unwrap();
                 // Here is where we add new connections!
                 // We detect them by receiving tcp packets.
+                println!("NEW CONNECTION FROM: {}", peer);
                 connections.insert(
                     peer.port(),
                     PlayerData {
