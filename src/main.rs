@@ -21,8 +21,11 @@ use common::{
     accept_connections, handle_connections, handle_udp_traffic, BUFFER_SIZE,
     DISABLE_NAGLE_ALGORITHM, MAX_QUEUE_SIZE, MINIMUM_TICK_RATE_IN_MS,
 };
-use connections::Connections;
-use packet::{print_packet, process_packets, CommandPacket, DataPacket, GreetingPacket, Packet};
+use connections::{Connections, PlayerData};
+use packet::{
+    print_packet, process_packets, CommandPacket, ConnectionPacket, DataPacket, GreetingPacket,
+    Packet,
+};
 use server::ServerState;
 
 fn main() {
@@ -100,6 +103,7 @@ fn host(port: u16) {
         // .map(|(k, _)| *k)
         // .collect();
         let mut packets = vec![]; // Packets to pass
+        let mut connection_packets = vec![]; // Packets to pass
         let mut disconnected = vec![]; // Disconnected peers
         let mut commands = vec![];
         let mut greetings = vec![];
@@ -110,6 +114,7 @@ fn host(port: u16) {
             &mut connections,
             // &peers,
             &mut packets,
+            &mut connection_packets,
             &mut disconnected,
             &mut commands,
             &mut greetings,
@@ -120,7 +125,7 @@ fn host(port: u16) {
             Default::default(),
             &_cached,
         );
-        relay_packets(server_state, &mut packets);
+        relay_packets(server_state, &mut packets, &mut connection_packets);
         process_disconnection(&mut connections, &mut disconnected);
 
         // Process received data
@@ -191,7 +196,7 @@ fn host(port: u16) {
                             },
 							Packet::Heartbeat(s) => {
 								if let Some(v) = connections.data.lock().unwrap().get_player_udp_port_by_name_mut(&s) {
-									println!("Reacting to a heartbeat request from player {s} on: {}", addr);
+									// println!("Reacting to a heartbeat request from player {s} on: {}", addr);
 									// Ping back with a heartbeat packet!
 									*v = addr.port();
 									let _ = udp_socket.send_to(&bincode::serialize(&Packet::Heartbeat("".to_string())).unwrap(), addr);
@@ -219,10 +224,42 @@ fn host(port: u16) {
     }
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
-    accept_connections(&listener, connections);
+    accept_connections(&listener, connections, None);
 }
 
-fn relay_packets(server: &mut ServerState, packets: &mut Vec<(u16, DataPacket)>) {
+fn relay_tcp_data(player_data: &mut PlayerData, packet: Packet) {
+    // We need to construct a new packet!
+    if let Err(e) = player_data
+        .stream
+        .write(&bincode::serialize(&packet).unwrap())
+    {
+        match e.kind() {
+            std::io::ErrorKind::WouldBlock => {
+                // println!(
+                // "A stream ({:?}) would block upon writing: {:?}",
+                // player_data.address.clone(),
+                // e
+                // )
+            }
+            _ => println!(
+                "A stream ({:?}) returned an error upon writing: {:?}",
+                player_data.address.clone(),
+                e
+            ),
+        }
+    } else {
+        // No error!
+        // println!(
+        // "Packet delivered from port {} to player {}",
+        // port, receiver_name
+        // );
+    }
+}
+fn relay_packets(
+    server: &mut ServerState,
+    packets: &mut Vec<(u16, DataPacket)>,
+    connection_packets: &mut Vec<(u16, ConnectionPacket)>,
+) {
     let mut locked_connections = server.connections.data.lock().unwrap();
     for (_port, packet) in packets {
         // We need to find the player to retrieve the data from.
@@ -232,32 +269,20 @@ fn relay_packets(server: &mut ServerState, packets: &mut Vec<(u16, DataPacket)>)
             .iter_mut()
             .find(|element| element.1.name == receiver_name)
         {
-            // We need to construct a new packet!
-            if let Err(e) = player_data
-                .stream
-                .write(&bincode::serialize(&Packet::Data(packet.clone())).unwrap())
-            {
-                match e.kind() {
-                    std::io::ErrorKind::WouldBlock => {
-                        // println!(
-                        // "A stream ({:?}) would block upon writing: {:?}",
-                        // player_data.address.clone(),
-                        // e
-                        // )
-                    }
-                    _ => println!(
-                        "A stream ({:?}) returned an error upon writing: {:?}",
-                        player_data.address.clone(),
-                        e
-                    ),
-                }
-            } else {
-                // No error!
-                // println!(
-                // "Packet delivered from port {} to player {}",
-                // port, receiver_name
-                // );
-            }
+            relay_tcp_data(player_data, Packet::Data(packet.clone()));
+        } else {
+            // println!("Packet delivery to player {} attempted by player at port {} but the target player was not found!", receiver_name, port);
+        }
+    }
+    for (_port, connection_packet) in connection_packets {
+        // We need to find the player to retrieve the data from.
+        let receiver_name = connection_packet.receiver_name.clone();
+        // println!("Relaying a packet to {}", receiver_name);
+        if let Some((_, player_data)) = locked_connections
+            .iter_mut()
+            .find(|element| element.1.name == receiver_name)
+        {
+            relay_tcp_data(player_data, Packet::Connection(connection_packet.clone()));
         } else {
             // println!("Packet delivery to player {} attempted by player at port {} but the target player was not found!", receiver_name, port);
         }
@@ -370,10 +395,29 @@ fn connect(
     );
     let connections = client.connections.clone();
 
+    let (connection_sender, connection_receiver) = channel::<SocketAddr>();
+
     // let mut last_tick = std::time::Instant::now();
     // let relay_server_address = relay_server_address.clone();
     let relay_server_address_cloned = relay_server_address.clone();
     handle_connections(client, move |client, buffer, had_one| {
+        // Before anything else, announce new connections to the server
+        while let Ok(socket) = connection_receiver.try_recv() {
+            println!("RELAYING CONNECTION FROM: {}", socket);
+            local_outgoing_stream
+                .write(
+                    &bincode::serialize(&Packet::Connection(ConnectionPacket {
+                        sender_name: client.player_name.clone(),
+                        sender_port: client.player_port,
+                        receiver_name: client.other_player_name.clone(),
+                        receiver_port: client.other_player_port,
+                        source_port: socket.port(),
+                    }))
+                    .unwrap(),
+                )
+                .unwrap();
+        }
+
         // println!("ELAPSED: {}ms", last_tick.elapsed().as_millis());
         // last_tick = std::time::Instant::now();
 
@@ -388,6 +432,7 @@ fn connect(
             .collect();
         */
         let mut packets = vec![]; // Packets to pass
+        let mut connection_packets = vec![]; // Ignored by clients (?)
         let mut disconnected = vec![]; // Disconnected peers
         let mut commands = vec![]; // Ignored by clients
         let mut greetings = vec![]; // Ignored by clients
@@ -398,6 +443,7 @@ fn connect(
             &mut connections,
             // &peers,
             &mut packets,
+            &mut connection_packets,
             &mut disconnected,
             &mut commands,
             &mut greetings,
@@ -503,7 +549,7 @@ fn connect(
                         }
                         Packet::Heartbeat(_) => {
                             // ignore it, the server is just pinging us back
-                            println!("heartbeat: {}", udp_port);
+                            // println!("heartbeat: {}", udp_port);
                         }
                         _ => {
                             panic!("NOT A DATA PACKET!");
@@ -556,7 +602,7 @@ fn connect(
                             }
                             Packet::Heartbeat(_) => {
                                 // ignore it, the server is just pinging us back
-                                println!("heartbeat: {}", udp_port);
+                                // println!("heartbeat: {}", udp_port);
                             }
                             _ => {
                                 // ignore
@@ -837,7 +883,7 @@ fn connect(
         relay_server_address_cloned,
         player_name.clone(),
     );
-    accept_connections(&listener, connections);
+    accept_connections(&listener, connections, Some(connection_sender));
 }
 
 /// Connects to an address and starts sending tcp packets to it.
@@ -959,7 +1005,7 @@ fn listen(port: u16, udp: SocketType) {
             });
 
             let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
-            accept_connections(&listener, connections);
+            accept_connections(&listener, connections, None);
         }
     }
 }

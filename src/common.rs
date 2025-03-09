@@ -1,6 +1,6 @@
 use std::{
-    net::{TcpListener, UdpSocket},
-    sync::{Arc, Mutex},
+    net::{SocketAddr, TcpListener, UdpSocket},
+    sync::{mpsc::Sender, Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -124,7 +124,11 @@ pub fn handle_udp_traffic(
     });
 }
 
-pub fn accept_connections(tcp_listener: &TcpListener, connections: Connections) -> ! {
+pub fn accept_connections(
+    tcp_listener: &TcpListener,
+    connections: Connections,
+    connection_sender: Option<Sender<SocketAddr>>,
+) -> ! {
     loop {
         let begin = Instant::now();
 
@@ -139,17 +143,19 @@ pub fn accept_connections(tcp_listener: &TcpListener, connections: Connections) 
                 let mut connections = connections.data.lock().unwrap();
                 // Here is where we add new connections!
                 // We detect them by receiving tcp packets.
-                println!("NEW CONNECTION FROM: {}", peer);
                 connections.insert(
                     peer.port(),
                     PlayerData {
                         name: "<missing>".to_string(),
-                        address: peer,
+                        address: peer.clone(),
                         stream: SocketWrapper::from_tcp_socket(tcp_stream),
                         local_port: None,
                         last_known_udp_port: 0,
                     },
                 );
+                if let Some(sender) = connection_sender.as_ref() {
+                    sender.send(peer).unwrap();
+                }
             }
         }
 

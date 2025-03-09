@@ -11,6 +11,17 @@ pub enum Packet {
     Greeting(GreetingPacket),
     GreetingReply,
     Heartbeat(String), // Needed by the UDP to avoid issues with NAT
+    Connection(ConnectionPacket),
+}
+
+/// For announcting TCP connections
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ConnectionPacket {
+    pub sender_name: String,
+    pub sender_port: u16,
+    pub receiver_name: String,
+    pub receiver_port: u16,
+    pub source_port: u16,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -86,6 +97,7 @@ pub fn process_packets(
     connections: &mut Connections,
     // peers: &HashSet<u16>,
     packets: &mut Vec<(u16, DataPacket)>,
+    connection_packets: &mut Vec<(u16, ConnectionPacket)>,
     disconnected: &mut Vec<u16>,
     commands: &mut Vec<String>,
     greetings: &mut Vec<(u16, GreetingPacket)>,
@@ -163,6 +175,17 @@ pub fn process_packets(
                                 }
                                 Packet::GreetingReply => {
                                     println!("Received a greeting reply!");
+                                }
+                                Packet::Connection(con) => {
+                                    println!(
+                                        "Received a connection packet: {}:{} ({}) -> {}:{}",
+                                        con.sender_name,
+                                        con.sender_port,
+                                        con.source_port,
+                                        con.receiver_name,
+                                        con.receiver_port
+                                    );
+                                    connection_packets.push((*port, con));
                                 }
                             }
                         } else {
