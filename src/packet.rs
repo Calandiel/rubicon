@@ -196,7 +196,7 @@ pub fn process_packets(
                                     // data.socket_type == SocketType::Tcp,
                                     // "Tcp sockets should only receive tcp data!"
                                     // );
-                                    data.print("received on a tcp socket :: ");
+                                    data.print("received data packet on a tcp socket :: ");
                                     if data.socket_type == SocketType::Udp {
                                         println!("Received a udp packet on a tcp relay!");
                                     }

@@ -137,7 +137,7 @@ pub fn accept_connections(
             let stream = tcp_listener.accept();
             if let Ok((tcp_stream, peer)) = stream {
                 had_one = true;
-                // println!("Received connection from: {}", peer);
+                println!("Received connection from: {}", peer);
                 tcp_stream.set_nonblocking(true).unwrap(); // TODO: remove this unwrap
                 tcp_stream.set_nodelay(DISABLE_NAGLE_ALGORITHM).unwrap();
                 let mut connections = connections.data.lock().unwrap();

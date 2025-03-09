@@ -201,7 +201,7 @@ fn host(port: u16) {
 									*v = addr.port();
 									let _ = udp_socket.send_to(&bincode::serialize(&Packet::Heartbeat("".to_string())).unwrap(), addr);
 								} else {
-									println!("Received a heartbut but failed to retrieve the player {s} on: {}", addr);
+									println!("Received a heartbeat but failed to retrieve the player {s} on: {}", addr);
 								}
 							}
                             _ => println!("Received a non data udp packet on the server from {addr}. This shouldn't happen, we only accept data on the udp socket!")
@@ -249,10 +249,7 @@ fn relay_tcp_data(player_data: &mut PlayerData, packet: Packet) {
         }
     } else {
         // No error!
-        // println!(
-        // "Packet delivered from port {} to player {}",
-        // port, receiver_name
-        // );
+        println!("Packet delivered from port to player: {}", player_data.name);
     }
 }
 fn relay_packets(
