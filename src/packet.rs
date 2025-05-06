@@ -168,8 +168,6 @@ pub fn process_packets(
         }
 
         if player_data.stream.has_tcp() {
-            let tcp_address = player_data.stream.get_tcp_addr().unwrap();
-
             // The amount of packets to drain in a single iteration. We need more than one cuz some programs could be FLOODING our connection,
             // We can't set it too high, though, as that'd fuck up OTHER connections.
             const MAX_PACKETS_TO_GO_THROUGH: usize = usize::MAX;
@@ -272,6 +270,7 @@ pub fn process_packets(
                             } else {
                                 // If we're not a host, just target the default receiver.
                                 // Also, use the tcp adress as the port
+                                let tcp_address = player_data.stream.get_tcp_addr().unwrap();
                                 rejected_packets_buffers.push((
                                     default_receiver_name.clone(),
                                     default_receiver_port,
