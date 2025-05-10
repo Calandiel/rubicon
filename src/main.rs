@@ -171,22 +171,20 @@ fn host(port: u16) {
                                 let connections = connections.data.lock().unwrap();
                                 if let Some(receiver_tcp_port) = connections.get_player_tcp_port_by_name(&data_packet.receiver_name){
                                     if let Some(player_data) = connections.get(&receiver_tcp_port) {
-                                        if let player_local_port = player_data.last_known_udp_port {
-                                        	let mut final_address = player_data.address.clone();
-                                        	final_address.set_port(player_local_port);
+                                        let player_local_port = player_data.last_known_udp_port;
+                                        let mut final_address = player_data.address.clone();
+                                        final_address.set_port(player_local_port);
 
-                                    	    // println!(
-                                    	        // "RECEIVED UDP PACKET: {} @ {} FOR {}",
-                                    	        // addr, size, final_address
-                                        	// );
+                                    	// println!(
+                                    	    // "RECEIVED UDP PACKET: {} @ {} FOR {}",
+                                    	    // addr, size, final_address
+                                        // );
 
-											println!("final_address for udp: {}", final_address);
-                                        	let _ = udp_socket.send_to(&buffer[..size], final_address);
+										println!("final_address for udp: {}", final_address);
+                                        let _ = udp_socket.send_to(&buffer[..size], final_address);
 
-                                    	    // TODO: CONTINUE HERE - we have the final adress - now we need to deliver it as a data packet with udp, then read it on the other side and relay it to the correct destination uwu
-    	                                } else {
-	                                        println!("Player has no local port. Are we attempting communication before the greeting packet was 	delivered?");
-                                    	}
+                                    	// TODO: CONTINUE HERE - we have the final adress - now we need to deliver it as a data packet with udp, then read it on the other side and relay it to the correct destination uwu
+										// TODO: well, do we? isnt this basically finished? :thinkge:
                                     } else  {
 										println!("Connection for the requested port was not found!");
 									}
@@ -201,7 +199,7 @@ fn host(port: u16) {
 									*v = addr.port();
 									let _ = udp_socket.send_to(&bincode::serialize(&Packet::Heartbeat("".to_string())).unwrap(), addr);
 								} else {
-									println!("Received a heartbeat but failed to retrieve the player {s} on: {}", addr);
+									println!("Received a heartbeat but failed to retrieve the player {s} on: {}. This could be due to it being the very first heartbeat.", addr);
 								}
 							}
                             _ => println!("Received a non data udp packet on the server from {addr}. This shouldn't happen, we only accept data on the udp socket!")
@@ -394,9 +392,10 @@ fn connect(
 
     let (connection_sender, connection_receiver) = channel::<SocketAddr>();
 
-    // let mut last_tick = std::time::Instant::now();
+    let mut last_heartbeat = std::time::Instant::now();
     // let relay_server_address = relay_server_address.clone();
     let relay_server_address_cloned = relay_server_address.clone();
+    let player_name_cloned = player_name.clone();
     handle_connections(client, move |client, buffer, had_one| {
         // Before anything else, announce new connections to the server
         while let Ok(socket) = connection_receiver.try_recv() {
@@ -415,8 +414,14 @@ fn connect(
                 .unwrap();
         }
 
-        // println!("ELAPSED: {}ms", last_tick.elapsed().as_millis());
-        // last_tick = std::time::Instant::now();
+        // Every now and then, send a heartbeat packet over TCP UwU
+        // While TCP itself should work, we wanna make sure no NAT shenanigans stops the game from working
+        if last_heartbeat.elapsed().as_millis() > 500 {
+            last_heartbeat = std::time::Instant::now();
+            local_outgoing_stream
+                .write(&bincode::serialize(&Packet::Heartbeat(player_name_cloned.clone())).unwrap())
+                .unwrap();
+        }
 
         /*
         let peers: HashSet<u16> = client

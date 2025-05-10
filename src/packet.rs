@@ -26,7 +26,7 @@ pub enum Packet {
     Data(DataPacket),
     Greeting(GreetingPacket),
     GreetingReply,
-    Heartbeat(String), // Needed by the UDP to avoid issues with NAT
+    Heartbeat(String), // Needed by the UDP to avoid issues with NAT (possibly also needed for TCP?)
     Connection(ConnectionPacket),
 }
 
@@ -218,8 +218,25 @@ pub fn process_packets(
                                         .write(&bincode::serialize(&Packet::GreetingReply).unwrap())
                                         .unwrap();
                                 }
-                                Packet::Heartbeat(_) => {
-                                    println!("Received a heartbeat packet on a tcp socket! This should never happen!");
+                                Packet::Heartbeat(player_name) => {
+                                    if is_host {
+                                        // We received a packet on a tcp socket from a client! Time to send it back!
+                                        player_data
+                                            .stream
+                                            .write(
+                                                &bincode::serialize(&Packet::Heartbeat(
+                                                    "".to_string(),
+                                                ))
+                                                .unwrap(),
+                                            )
+                                            .unwrap();
+                                        println!(
+                                            "Received a tcp heartbeat from player: {}",
+                                            player_name
+                                        );
+                                    } else {
+                                        //
+                                    }
                                 }
                                 Packet::GreetingReply => {
                                     println!("Received a greeting reply!");
@@ -270,6 +287,7 @@ pub fn process_packets(
                             } else {
                                 // If we're not a host, just target the default receiver.
                                 // Also, use the tcp adress as the port
+                                println!("Targetting the default receiver: {default_receiver_name}:{default_receiver_port}");
                                 let tcp_address = player_data.stream.get_tcp_addr().unwrap();
                                 rejected_packets_buffers.push((
                                     default_receiver_name.clone(),
