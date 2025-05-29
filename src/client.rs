@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    common::{print_connections, ToConnections, DISABLE_NAGLE_ALGORITHM},
+    common::{ToConnections, DISABLE_NAGLE_ALGORITHM},
     connections::Connections,
     packet::{DataPacket, DataPacketLike},
 };
@@ -46,7 +46,7 @@ impl ClientState {
     }
 
     pub fn print_connections(&self) {
-        print_connections(&self.connections);
+        self.connections.print();
     }
 
     /// Check if the client is a game host (if so, player name == other player name)

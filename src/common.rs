@@ -166,12 +166,6 @@ pub fn accept_connections(
     }
 }
 
-pub fn print_connections(connections: &Connections) {
-    for (_, player_data) in connections.data.lock().unwrap().iter() {
-        println!("- {} @ {}", player_data.name, player_data.address);
-    }
-}
-
 pub fn handle_connections<
     T: ToConnections + Send + 'static,
     F: FnMut(&mut T, &mut [u8], &mut bool) -> () + Send + 'static,

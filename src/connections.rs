@@ -125,6 +125,11 @@ impl Connections {
             data: Arc::new(Mutex::new(InnerConnections::default())),
         }
     }
+    pub fn print(&self) {
+        for (_, player_data) in self.data.lock().unwrap().iter() {
+            println!("- {} @ {}", player_data.name, player_data.address);
+        }
+    }
 }
 impl ToConnections for Connections {
     fn to_connections(&mut self) -> &mut Connections {

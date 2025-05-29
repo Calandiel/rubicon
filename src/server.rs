@@ -1,8 +1,4 @@
-use crate::{
-    common::{print_connections, ToConnections},
-    connections::Connections,
-    packet::GreetingPacket,
-};
+use crate::{common::ToConnections, connections::Connections, packet::GreetingPacket};
 
 /// The server is responsible for the following operations:
 /// - accepting new TCP connections from clients
@@ -19,7 +15,7 @@ impl ServerState {
     }
 
     pub fn print_connections(&self) {
-        print_connections(&self.connections);
+        self.connections.print();
     }
 
     /// Receives a vector of commands (strings) and executes them
