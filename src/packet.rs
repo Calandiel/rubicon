@@ -315,9 +315,5 @@ pub fn process_packets(
                 }
             }
         }
-
-        if player_data.stream.has_udp() {
-            //
-        }
     }
 }
