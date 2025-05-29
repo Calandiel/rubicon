@@ -18,7 +18,8 @@ impl ServerState {
         self.connections.print();
     }
 
-    /// Receives a vector of commands (strings) and executes them
+    /// Receives a vector of commands (strings) and executes them.
+    /// Used for ad-hoc debugging utilities
     pub fn receive_commands(&mut self, commands: Vec<String>) {
         for command in commands {
             match command.as_str() {
@@ -42,9 +43,6 @@ impl ServerState {
             }
         }
     }
-    // pub fn receive_data_packets(&mut self, packets: Vec<(u16, DataPacket)>) {
-
-    // }
 }
 impl ToConnections for ServerState {
     fn to_connections(&mut self) -> &mut Connections {
